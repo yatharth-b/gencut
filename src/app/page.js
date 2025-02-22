@@ -92,7 +92,7 @@ export default function Home() {
       // Get media and create new clip
       const media = mediaList.find((m) => m.id === draggingMedia.id);
       const newClip = {
-        id: Date.now(),
+        id: Date.now().toString(),
         mediaId: draggingMedia.id,
         start: dropPosition,
         duration: draggingMedia.duration,
@@ -286,6 +286,47 @@ export default function Home() {
     setDraggingClip(null);
   };
 
+  const cutClip = (clipId, cutPoint) => {
+    console.log(timelineTracks)
+    const clipToCut = timelineTracks[0].find(c => c.id === clipId);
+    console.log('cliptocut')
+    console.log(clipToCut)
+    if (!clipToCut) {
+        console.error("Clip not found with ID:", clipId);
+        return;
+    }
+    console.log("cutClip", clipToCut, cutPoint);
+    const firstHalf = {
+      id: Date.now().toString(),
+      mediaId: clipToCut.mediaId,
+      start: clipToCut.start,
+      duration: cutPoint - clipToCut.start,
+      offset: clipToCut.offset,
+    };
+
+    const secondHalf = {
+      id: (Date.now() + 1).toString(),
+      mediaId: clipToCut.mediaId,
+      start: cutPoint,
+      duration: clipToCut.start + clipToCut.duration - cutPoint,
+      offset: clipToCut.offset + (cutPoint - clipToCut.start),
+    };
+
+    // Update the single track directly
+    setTimelineTracks((prev) => {
+      const updatedTrack = prev[0].map((c) => {
+        if (c.id === clipToCut.id) {
+          // Replace the cut clip with the two new pieces
+          return [firstHalf, secondHalf];
+        }
+        return [c];
+      }).flat();
+
+      return [updatedTrack]; // Return a new array with the updated track
+    });
+
+  };
+
   const handleClipClick = (e, trackIndex, clipIndex, clip) => {
     e.stopPropagation(); // Prevent timeline click
     setSelectedClipInfo({ clip });
@@ -343,7 +384,13 @@ export default function Home() {
         },
       ]);
 
-      // If it's a function call to trim video
+      // If it's a function call to cut a clip
+      if (data.function_name === "cutClip") {
+        const functionArgs = JSON.parse(data.function_args);
+        console.log(functionArgs)
+        cutClip(functionArgs.clipId, functionArgs.cutPoint);
+      }
+
     } catch (error) {
       console.error("Error sending message:", error);
       setMessages((prev) => [
@@ -485,6 +532,7 @@ export default function Home() {
             timelineTracks={timelineTracks}
             setTimelineTracks={setTimelineTracks}
             setSelectedClipInfo={setSelectedClipInfo}
+            cutClip={cutClip}
           />
 
           {/* Chat panel */}

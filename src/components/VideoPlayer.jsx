@@ -18,6 +18,7 @@ export default function VideoPlayer({
   timelineTracks,
   setTimelineTracks,
   setSelectedClipInfo,
+  cutClip
 }) {
   const formatTime = (time) => {
     const minutes = Math.floor(time / 60);
@@ -173,46 +174,7 @@ export default function VideoPlayer({
       setLoading(false);
     }
   };
-  const cutClip = (clipId, cutPoint) => {
 
-    const clipToCut = timelineTracks[0].find(c => c.id === clipId);
-    console.log('cliptocut')
-    console.log(clipToCut)
-    if (!clipToCut) {
-        console.error("Clip not found with ID:", clipId);
-        return;
-    }
-    console.log("cutClip", clipToCut, cutPoint);
-    const firstHalf = {
-      id: Date.now(),
-      mediaId: clipToCut.mediaId,
-      start: clipToCut.start,
-      duration: cutPoint - clipToCut.start,
-      offset: clipToCut.offset,
-    };
-
-    const secondHalf = {
-      id: Date.now() + 1,
-      mediaId: clipToCut.mediaId,
-      start: cutPoint,
-      duration: clipToCut.start + clipToCut.duration - cutPoint,
-      offset: clipToCut.offset + (cutPoint - clipToCut.start),
-    };
-
-    // Update the single track directly
-    setTimelineTracks((prev) => {
-      const updatedTrack = prev[0].map((c) => {
-        if (c.id === clipToCut.id) {
-          // Replace the cut clip with the two new pieces
-          return [firstHalf, secondHalf];
-        }
-        return [c];
-      }).flat();
-
-      return [updatedTrack]; // Return a new array with the updated track
-    });
-
-  };
 
   const handleCutClip = () => {
     if (!selectedClipInfo) return;

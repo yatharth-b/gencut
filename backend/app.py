@@ -230,9 +230,8 @@ def chat():
         messages = data.get('messages', [])
         print(messages)
         clip_contexts = data.get('clipContexts', [])
-        print(clip_contexts)
 
-        # print(clip_contexts)
+        print(clip_contexts)
         
         formatted_messages = []
         for msg in messages:
@@ -249,7 +248,7 @@ def chat():
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=formatted_messages,
-            functions=[AVAILABLE_FUNCTIONS["trim_video"]],
+            functions=[AVAILABLE_FUNCTIONS["trim_video"], AVAILABLE_FUNCTIONS['cutClip']],
             function_call="auto",
             max_tokens=500
         )
@@ -261,20 +260,19 @@ def chat():
         # If there's a function call
         if hasattr(assistant_message, 'function_call') and assistant_message.function_call:
             function_name = assistant_message.function_call.name
-            
-            result = trim_video(**function_args)
+
             return jsonify({
                 "type": "function_call",
-                "result": result,
-                "function_call": assistant_message.function_call
-                "message": assistant_message.content or "Ok."
+                "function_name": assistant_message.function_call.name,
+                "function_args": assistant_message.function_call.arguments,
+                "message": "Ok."
             })
-
-        # If it's just a regular message
-        return jsonify({
-            "type": "message",
-            "message": assistant_message.content
-        })
+        else:
+            # If it's just a regular message
+            return jsonify({
+                "type": "message",
+                "message": assistant_message.content
+            })
 
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
