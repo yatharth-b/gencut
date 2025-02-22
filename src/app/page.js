@@ -41,8 +41,15 @@ export default function Home() {
   const [isDraggingStartCursor, setIsDraggingStartCursor] = useState(false);
   const [isDraggingEndCursor, setIsDraggingEndCursor] = useState(false);
   const [clipsInRange, setClipsInRange] = useState([]);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: 'Hi! I can help you analyze and edit your video. Select a portion of the timeline and ask me questions about it.'
+    }
+  ]);
   const [inputMessage, setInputMessage] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatContainerRef = useRef(null);
 
   // Add state for chat context
   const [chatContext, setChatContext] = useState({
@@ -139,20 +146,28 @@ export default function Home() {
   };
 
   const handleTimelineDrop = (e) => {
-    e.preventDefault();
-    const timelineRect = timelineRef.current.getBoundingClientRect();
-    const dropPosition = (e.clientX - timelineRect.left) / timelineRect.width * projectDuration;
-    
     if (draggingMedia) {
-      // Add new clip from media
+      // Calculate drop position
+      const timelineRect = timelineRef.current.getBoundingClientRect();
+      const dropPosition = (e.clientX - timelineRect.left) / timelineRect.width * projectDuration;
+      
+      // Get media and calculate time indices
+      const media = mediaList.find(m => m.id === draggingMedia.id);
+      const startIndex = Math.floor(dropPosition);
+      const endIndex = Math.floor(dropPosition + draggingMedia.duration);
+      
+      console.log('something was dragged into the timeline');
+      // Create new clip with preprocessed data
       const newClip = {
         id: Date.now(),
         mediaId: draggingMedia.id,
         start: dropPosition,
         duration: draggingMedia.duration,
-        offset: 0
+        offset: 0,
+        imageDescriptions: media.imageDescriptions,
+        imageAttributes: media.imageAttributes,
+        transcription: media.transcription
       };
-      
       // Find first track with space for the clip
       let targetTrackIndex = timelineTracks.findIndex(track => 
         !track.some(clip => 
@@ -281,100 +296,52 @@ export default function Home() {
     setSelectedClipInfo({ trackIndex, clipIndex, clip });
   };
 
-  // Modify handleVideoUpload to set chat context
-  const handleVideoUpload = async (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setVideoFile(file);
-      const url = URL.createObjectURL(file);
-      setVideoUrl(url);
-      setTrimmedVideoUrl(null);
-      setStartTime(0);
-      setEndTime(0);
-      setCurrentTime(0);
-      
-      try {
-        setLoading(true);
-        const formData = new FormData();
-        formData.append('video', file);
-        formData.append('duration', duration.toString());
-
-        const response = await fetch('http://localhost:5050/api/preprocess', {
-          method: 'POST',
-          body: formData
-        });
-
-        const data = await response.json();
-        console.log('Preprocessed data:', data);
-
-        // Set chat context
-        setChatContext({
-          imageDescriptions: data.image_description,
-          transcription: data.transcription,
-          initialized: true
-        });
-
-        // Add initial messages with video analysis
-        setMessages([
-          {
-            role: 'assistant',
-            content: "I've analyzed your video. Here's what I found:"
-          },
-          {
-            role: 'assistant',
-            content: `Video Analysis:\n${data.image_description.join('\n')}`
-          },
-          {
-            role: 'assistant',
-            content: `Transcription:\n${data.transcription.join(' ')}`
-          }
-        ]);
-
-      } catch (error) {
-        console.error('Error preprocessing video:', error);
-        alert('Failed to process video. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
-  // Modify handleChatSubmit to include context
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputMessage.trim()) return;
 
     const userMessage = inputMessage.trim();
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setInputMessage('');
     setIsChatLoading(true);
 
+    // Add user message to chat
+    setMessages(prev => [...prev, { 
+      role: 'user', 
+      content: userMessage
+    }]);
+
     try {
+      // Get clip contexts
+      const clipContexts = clipsInRange.map(clip => JSON.stringify(clip));
       const response = await fetch('http://localhost:5050/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: userMessage,
-          context: {
-            imageDescriptions: chatContext.imageDescriptions,
-            transcription: chatContext.transcription
-          }
+          messages:  messages,
+          clipContexts: clipContexts
         }),
       });
 
       const data = await response.json();
+      console.log('chatgpt response:', data);
+
+      // Add assistant's response to chat
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: data.message 
+        content: data.message,
+        type: data.type // 'message' or 'function_call'
       }]);
+
+      // If it's a function call to trim video
 
     } catch (error) {
       console.error('Error sending message:', error);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: 'Sorry, I encountered an error processing your request.' 
+        content: 'Sorry, I encountered an error processing your request.',
+        type: 'error'
       }]);
     } finally {
       setIsChatLoading(false);
@@ -453,6 +420,12 @@ export default function Home() {
     }
   };
 
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   return (
     <div className={`h-screen w-screen flex flex-col overflow-hidden bg-[#0D1117] text-[#c9d1d9] ${inter.className}`}>
       {/* Header */}
@@ -503,13 +476,14 @@ export default function Home() {
           />
 
           {/* Chat panel */}
-          <div className="w-[400px] shrink-0 bg-[#161B22] border-l border-[#30363D] flex flex-col">
-            <div className="p-4 border-b border-[#30363D]">
+          <div className="w-[400px] shrink-0 bg-[#161B22] border-l border-[#30363D] flex flex-col h-full">
+            {/* Header - fixed height */}
+            <div className="p-4 border-b border-[#30363D] shrink-0">
               <h2 className="text-sm font-semibold text-[#c9d1d9]">Chat</h2>
             </div>
             
             {/* Selected clips section - fixed height */}
-            <div className="p-4 border-b border-[#30363D]">
+            <div className="p-4 border-b border-[#30363D] shrink-0">
               <h3 className="text-xs font-medium text-[#8b949e] uppercase tracking-wider mb-3">
                 Selected Clips
               </h3>
@@ -536,22 +510,38 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Chat messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map(message => (
-                <div key={message.id} className="flex flex-col">
-                  <div className="bg-[#21262D] rounded-lg p-3 text-sm text-[#c9d1d9]">
-                    {message.text}
+            {/* Chat messages - with fixed height */}
+            <div 
+              ref={chatContainerRef}
+              className="h-[300px] overflow-y-auto p-4 space-y-4 [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:bg-[#30363D] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
+            >
+              {messages.map((message, index) => (
+                <div 
+                  key={index} 
+                  className={`flex flex-col ${
+                    message.role === 'user' ? 'items-end' : 'items-start'
+                  }`}
+                >
+                  <div className={`rounded-lg p-3 text-sm max-w-[80%] ${
+                    message.role === 'user' 
+                      ? 'bg-[#238636] text-white' 
+                      : 'bg-[#21262D] text-[#c9d1d9]'
+                  }`}>
+                    {message.content}
                   </div>
-                  <span className="text-xs text-[#8b949e] mt-1">
-                    {new Date(message.timestamp).toLocaleTimeString()}
-                  </span>
                 </div>
               ))}
+              {isChatLoading && (
+                <div className="flex items-start">
+                  <div className="bg-[#21262D] rounded-lg p-3 text-sm text-[#c9d1d9]">
+                    Thinking...
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Chat input */}
-            <form onSubmit={handleSendMessage} className="p-4 border-t border-[#30363D]">
+            {/* Chat input - fixed height */}
+            <form onSubmit={handleSendMessage} className="p-4 border-t border-[#30363D] shrink-0">
               <div className="flex gap-2">
                 <input
                   type="text"

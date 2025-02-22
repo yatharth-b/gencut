@@ -196,8 +196,8 @@ def preprocess():
         logger.info("Successfully finished preprocessing")
 
         return jsonify({
-            'image_description': '',
-            'image_attr': '',
+            'image_description': image_desc,
+            'image_attr': attrs,
             'transcription': transcription
         })
 
@@ -209,53 +209,54 @@ def preprocess():
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
+        print("in chat")
         data = request.get_json()
-        user_message = data.get('message')
-        context = data.get('context', {})
-        
-        # Create context message from image descriptions and transcription
-        context_message = "Video Analysis:\n"
-        context_message += "\n".join(context.get('imageDescriptions', []))
-        context_message += "\n\nTranscription:\n"
-        context_message += " ".join(context.get('transcription', []))
+        messages = data.get('messages', [])
+        print(messages)
+        clip_contexts = data.get('clipContexts', [])
 
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant that helps users trim videos or answer questions based on the video. Use the provided video analysis and transcription to give accurate answers."
-            },
-            {
-                "role": "assistant",
-                "content": context_message
-            },
-            {
-                "role": "user",
-                "content": user_message
-            }
-        ]
+        print(clip_contexts)
+        
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append({
+                "role": msg['role'],
+                "content": msg['content']
+            })
+
+        formatted_messages.append({
+            "role": "user",
+            "content": f"here is the context for all my videos: \n{'\n'.join(clip_contexts)}"
+        })
+
+
+        # messages = [
+        #     {
+        #         "role": "system",
+        #         "content": "You are a helpful assistant that helps users understand and edit videos. Use the provided clip information to give accurate answers."
+        #     },
+        #     {
+        #         "role": "assistant",
+        #         "content": context_message
+        #     },
+        #     {
+        #         "role": "user",
+        #         "content": user_message
+        #     }
+        # ]
 
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=messages,
+            messages=formatted_messages,
             functions=[AVAILABLE_FUNCTIONS["trim_video"]],
             function_call="auto",
             max_tokens=500
         )
 
+        print(response)
+
         assistant_message = response.choices[0].message
-        print(assistant_message)
-        # Update conversation history
-        # conversation_history.append({
-        #     "role": "user",
-        #     "content": user_message  # Store text only for history
-        # })
-        # conversation_history.append({
-        #     "role": "assistant",
-        #     "content": assistant_message.content
-        # })
-
-        print("Assistant message:", assistant_message)
-
+        
         # If there's a function call
         if hasattr(assistant_message, 'function_call') and assistant_message.function_call:
             function_name = assistant_message.function_call.name
@@ -277,6 +278,11 @@ def chat():
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+def formatTime(seconds):
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    return f"{minutes}:{seconds:02d}"
 
 @app.route('/api/health', methods=['GET'])
 def check_health():
