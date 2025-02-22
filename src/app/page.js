@@ -1,19 +1,19 @@
-'use client';
-import { useState, useRef, useEffect } from 'react';
-import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
+"use client";
+import { useState, useRef, useEffect } from "react";
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
 import Image from "next/image";
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
-import VideoPlayer from '@/components/VideoPlayer';
+import VideoPlayer from "@/components/VideoPlayer";
 
-const inter = Inter({ subsets: ['latin'] });
-const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
 
 // Create FFmpeg instance outside the component
-const ffmpeg = createFFmpeg({ 
+const ffmpeg = createFFmpeg({
   log: true,
-  corePath: 'https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js'
+  corePath: "https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js",
 });
 
 export default function Home() {
@@ -25,7 +25,7 @@ export default function Home() {
 
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const [ffmpegLoading, setFFmpegLoading] = useState(true);
-  const [timelineTracks, setTimelineTracks] = useState([[]]);  // Array of tracks, each track is an array of clips
+  const [timelineTracks, setTimelineTracks] = useState([[]]); // Single track as an array of clips
   const [draggingMedia, setDraggingMedia] = useState(null);
   const [draggingClip, setDraggingClip] = useState(null);
   const [thumbnails, setThumbnails] = useState([]); // Store video thumbnails
@@ -35,7 +35,7 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [dragStartX, setDragStartX] = useState(null);
-  const [selectedClipInfo, setSelectedClipInfo] = useState(null); // { trackIndex, clipIndex, clip }
+  const [selectedClipInfo, setSelectedClipInfo] = useState(null); // { clip }
   const [startCursor, setStartCursor] = useState(0);
   const [endCursor, setEndCursor] = useState(5); // Default to 5 seconds
   const [isDraggingStartCursor, setIsDraggingStartCursor] = useState(false);
@@ -43,20 +43,14 @@ export default function Home() {
   const [clipsInRange, setClipsInRange] = useState([]);
   const [messages, setMessages] = useState([
     {
-      role: 'assistant',
-      content: 'Hi! I can help you analyze and edit your video. Select a portion of the timeline and ask me questions about it.'
-    }
+      role: "assistant",
+      content:
+        "Hi! I can help you analyze and edit your video. Select a portion of the timeline and ask me questions about it.",
+    },
   ]);
-  const [inputMessage, setInputMessage] = useState('');
+  const [inputMessage, setInputMessage] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatContainerRef = useRef(null);
-
-  // Add state for chat context
-  const [chatContext, setChatContext] = useState({
-    imageDescriptions: [],
-    transcription: [],
-    initialized: false
-  });
 
   // Load FFmpeg
   useEffect(() => {
@@ -65,10 +59,12 @@ export default function Home() {
         setFFmpegLoading(true);
         await ffmpeg.load();
         setFfmpegLoaded(true);
-        console.log('FFmpeg is ready!');
+        console.log("FFmpeg is ready!");
       } catch (error) {
-        console.error('Failed to load FFmpeg:', error);
-        alert('Failed to load video processing capabilities. Please refresh the page.');
+        console.error("Failed to load FFmpeg:", error);
+        alert(
+          "Failed to load video processing capabilities. Please refresh the page."
+        );
       } finally {
         setFFmpegLoading(false);
       }
@@ -80,7 +76,60 @@ export default function Home() {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     const milliseconds = Math.floor((time % 1) * 100);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(2, '0')}`;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  const handleTimelineDrop = (e) => {
+    if (draggingMedia) {
+      // Calculate drop position
+      const timelineRect = timelineRef.current.getBoundingClientRect();
+      const dropPosition =
+        ((e.clientX - timelineRect.left) / timelineRect.width) *
+        projectDuration;
+
+      // Get media and create new clip
+      const media = mediaList.find((m) => m.id === draggingMedia.id);
+      const newClip = {
+        id: Date.now(),
+        mediaId: draggingMedia.id,
+        start: dropPosition,
+        duration: draggingMedia.duration,
+        offset: 0,
+        imageDescriptions: media.imageDescriptions,
+        imageAttributes: media.imageAttributes,
+        transcription: media.transcription,
+      };
+
+      // Add the new clip to the single track
+      setTimelineTracks((prev) => [[...prev[0], newClip].sort((a, b) => a.start - b.start)]);
+    } else if (draggingClip) {
+      // Move existing clip
+      const { clip } = draggingClip;
+      const newStart = Math.max(0, dropPosition);
+
+      setTimelineTracks((prev) => {
+        const updatedTrack = prev[0].filter((c) => c.id !== clip.id);
+        const updatedClip = { ...clip, start: newStart };
+        return [[...updatedTrack, updatedClip].sort((a, b) => a.start - b.start)];
+      });
+    }
+
+    setDraggingMedia(null);
+    setDraggingClip(null);
+  };
+
+  const handleDeleteClip = () => {
+    if (!selectedClipInfo) return;
+
+    const { clip } = selectedClipInfo;
+
+    setTimelineTracks((prev) =>
+      [prev[0].filter((c) => c.id !== clip.id)] // Filter out the deleted clip
+    );
+
+    setSelectedClipInfo(null); // Clear the selected clip info
   };
 
   const handleMediaDragStart = (media) => {
@@ -98,18 +147,18 @@ export default function Home() {
     const clip = timelineTracks[trackIndex][clipIndex];
     const rect = timelineRef.current.getBoundingClientRect();
     const startX = e.clientX - rect.left;
-    
+
     setDragStartX(startX);
-    setDraggingClip({ 
-      clip, 
-      trackIndex, 
+    setDraggingClip({
+      clip,
+      trackIndex,
       clipIndex,
-      initialStart: clip.start
+      initialStart: clip.start,
     });
 
     // Add window-level event listeners
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
   };
 
   const handleMouseMove = (e) => {
@@ -119,101 +168,41 @@ export default function Home() {
     const currentX = e.clientX - rect.left;
     const deltaX = currentX - dragStartX;
     const timeDelta = (deltaX / rect.width) * projectDuration;
-    const newStart = Math.max(0, Math.min(
-      projectDuration - draggingClip.clip.duration,
-      draggingClip.initialStart + timeDelta
-    ));
+    const newStart = Math.max(
+      0,
+      Math.min(
+        projectDuration - draggingClip.clip.duration,
+        draggingClip.initialStart + timeDelta
+      )
+    );
 
-    setTimelineTracks(prev => prev.map((track, i) => {
-      if (i === draggingClip.trackIndex) {
-        return track.map(clip => 
-          clip.id === draggingClip.clip.id 
-            ? { ...clip, start: newStart }
-            : clip
-        );
-      }
-      return track;
-    }));
+    setTimelineTracks((prev) =>
+      prev.map((track, i) => {
+        if (i === draggingClip.trackIndex) {
+          return track.map((clip) =>
+            clip.id === draggingClip.clip.id
+              ? { ...clip, start: newStart }
+              : clip
+          );
+        }
+        return track;
+      })
+    );
   };
 
   const handleMouseUp = () => {
     if (draggingClip) {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
       setDraggingClip(null);
       setDragStartX(null);
     }
   };
 
-  const handleTimelineDrop = (e) => {
-    if (draggingMedia) {
-      // Calculate drop position
-      const timelineRect = timelineRef.current.getBoundingClientRect();
-      const dropPosition = (e.clientX - timelineRect.left) / timelineRect.width * projectDuration;
-      
-      // Get media and calculate time indices
-      const media = mediaList.find(m => m.id === draggingMedia.id);
-      const startIndex = Math.floor(dropPosition);
-      const endIndex = Math.floor(dropPosition + draggingMedia.duration);
-      
-      console.log('something was dragged into the timeline');
-      // Create new clip with preprocessed data
-      const newClip = {
-        id: Date.now(),
-        mediaId: draggingMedia.id,
-        start: dropPosition,
-        duration: draggingMedia.duration,
-        offset: 0,
-        imageDescriptions: media.imageDescriptions,
-        imageAttributes: media.imageAttributes,
-        transcription: media.transcription
-      };
-      // Find first track with space for the clip
-      let targetTrackIndex = timelineTracks.findIndex(track => 
-        !track.some(clip => 
-          (newClip.start < clip.start + clip.duration) && 
-          (newClip.start + newClip.duration > clip.start)
-        )
-      );
-      
-      if (targetTrackIndex === -1) {
-        // Add new track if no space found
-        setTimelineTracks(prev => [...prev, [newClip]]);
-      } else {
-        // Add to existing track
-        setTimelineTracks(prev => prev.map((track, i) => 
-          i === targetTrackIndex ? [...track, newClip].sort((a, b) => a.start - b.start) : track
-        ));
-      }
-    } else if (draggingClip) {
-      // Move existing clip
-      const { clip, trackIndex: oldTrackIndex, clipIndex } = draggingClip;
-      const newStart = Math.max(0, dropPosition);
-      
-      setTimelineTracks(prev => prev.map((track, i) => {
-        if (i === oldTrackIndex) {
-          return track.filter((_, index) => index !== clipIndex);
-        }
-        return track;
-      }));
-      
-      const updatedClip = { ...clip, start: newStart };
-      setTimelineTracks(prev => {
-        const newTracks = [...prev];
-        newTracks[oldTrackIndex] = [...newTracks[oldTrackIndex], updatedClip]
-          .sort((a, b) => a.start - b.start);
-        return newTracks;
-      });
-    }
-    
-    setDraggingMedia(null);
-    setDraggingClip(null);
-  };
-
   const findClipAtTime = (time) => {
     for (const track of timelineTracks) {
-      const clip = track.find(c => 
-        time >= c.start && time <= (c.start + c.duration)
+      const clip = track.find(
+        (c) => time >= c.start && time <= c.start + c.duration
       );
       if (clip) return clip;
     }
@@ -223,10 +212,10 @@ export default function Home() {
   const updateVideoPlayback = (time) => {
     const clip = findClipAtTime(time);
     setCurrentClip(clip);
-    
+
     if (videoRef.current) {
       if (clip) {
-        const media = mediaList.find(m => m.id === clip.mediaId);
+        const media = mediaList.find((m) => m.id === clip.mediaId);
         if (media) {
           if (!videoRef.current.src.includes(media.url)) {
             videoRef.current.src = media.url;
@@ -244,7 +233,7 @@ export default function Home() {
         if (!videoRef.current.paused) {
           videoRef.current.pause();
         }
-        videoRef.current.removeAttribute('src');
+        videoRef.current.removeAttribute("src");
         videoRef.current.load();
       }
     }
@@ -254,8 +243,11 @@ export default function Home() {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percent = x / rect.width;
-    const newTime = Math.max(0, Math.min(projectDuration, percent * projectDuration));
-    
+    const newTime = Math.max(
+      0,
+      Math.min(projectDuration, percent * projectDuration)
+    );
+
     setCurrentTime(newTime);
     updateVideoPlayback(newTime);
   };
@@ -268,11 +260,14 @@ export default function Home() {
 
   const handleTimelineMouseMove = (e) => {
     if (!timelineRef.current) return;
-    
+
     const rect = timelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percent = x / rect.width;
-    const newTime = Math.max(0, Math.min(projectDuration, percent * projectDuration));
+    const newTime = Math.max(
+      0,
+      Math.min(projectDuration, percent * projectDuration)
+    );
 
     if (isDraggingStartCursor) {
       setStartCursor(Math.min(newTime, endCursor));
@@ -283,7 +278,7 @@ export default function Home() {
       updateVideoPlayback(newTime);
     }
   };
-  
+
   const handleTimelineMouseUp = () => {
     setIsDraggingPlayhead(false);
     setIsDraggingStartCursor(false);
@@ -293,7 +288,7 @@ export default function Home() {
 
   const handleClipClick = (e, trackIndex, clipIndex, clip) => {
     e.stopPropagation(); // Prevent timeline click
-    setSelectedClipInfo({ trackIndex, clipIndex, clip });
+    setSelectedClipInfo({ clip });
   };
 
   const handleSendMessage = async (e) => {
@@ -301,53 +296,64 @@ export default function Home() {
     if (!inputMessage.trim()) return;
 
     const userMessage = inputMessage.trim();
-    setInputMessage('');
+    setInputMessage("");
     setIsChatLoading(true);
 
     let prevMessages = [...messages];
 
+    // Add user message to chat
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: userMessage,
+      },
+    ]);
+
     try {
       // Get clip contexts
-      const clipContexts = clipsInRange.map(clip => JSON.stringify(clip));
-      const response = await fetch('http://localhost:5050/api/chat', {
-        method: 'POST',
+      const clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
+      const response = await fetch("http://localhost:5050/api/chat", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages:  [...messages, { 
-            role: 'user', 
-            content: userMessage
-          }],
-          clipContexts: clipContexts
+          messages: [
+            ...prevMessages,
+            {
+              role: "user",
+              content: userMessage,
+            },
+          ],
+          clipContexts: clipContexts,
         }),
       });
 
-    // Add user message to chat
-    setMessages(prev => [...prev, { 
-      role: 'user', 
-      content: userMessage
-    }]);
-
       const data = await response.json();
-      console.log('chatgpt response:', data);
+      console.log("chatgpt response:", data);
 
       // Add assistant's response to chat
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: data.message,
-        type: data.type // 'message' or 'function_call'
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: data.message,
+          type: data.type, // 'message' or 'function_call'
+        },
+      ]);
 
       // If it's a function call to trim video
-
     } catch (error) {
-      console.error('Error sending message:', error);
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'Sorry, I encountered an error processing your request.',
-        type: 'error'
-      }]);
+      console.error("Error sending message:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, I encountered an error processing your request.",
+          type: "error",
+        },
+      ]);
     } finally {
       setIsChatLoading(false);
     }
@@ -363,7 +369,7 @@ export default function Home() {
         const deltaTime = (currentTime - lastTime) / 1000;
         lastTime = currentTime;
 
-        setCurrentTime(prevTime => {
+        setCurrentTime((prevTime) => {
           const newTime = prevTime + deltaTime;
           if (newTime >= projectDuration) {
             setIsPlaying(false);
@@ -386,32 +392,29 @@ export default function Home() {
   useEffect(() => {
     if (isDraggingPlayhead) {
       const handleMouseUp = () => setIsDraggingPlayhead(false);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => window.removeEventListener('mouseup', handleMouseUp);
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => window.removeEventListener("mouseup", handleMouseUp);
     }
   }, [isDraggingPlayhead]);
 
   useEffect(() => {
-    const clips = timelineTracks.flatMap((track, trackIndex) => 
-      track
-        .filter(clip => {
-          // Check if clip overlaps with cursor range
-          const clipEnd = clip.start + clip.duration;
-          return (clip.start <= endCursor && clipEnd >= startCursor);
-        })
-        .map(clip => ({
-          ...clip,
-          mediaName: mediaList.find(m => m.id === clip.mediaId)?.name || 'Unknown'
-        }))
-    );
-    
+    const clips = timelineTracks[0].filter((clip) => {
+      // Check if clip overlaps with cursor range
+      const clipEnd = clip.start + clip.duration;
+      return clip.start <= endCursor && clipEnd >= startCursor;
+    }).map((clip) => ({
+      ...clip,
+      mediaName:
+        mediaList.find((m) => m.id === clip.mediaId)?.name || "Unknown",
+    }));
+
     setClipsInRange(clips);
   }, [startCursor, endCursor, timelineTracks, mediaList]);
 
   const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return "0 B";
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
@@ -427,12 +430,15 @@ export default function Home() {
 
   useEffect(() => {
     if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
 
   return (
-    <div className={`h-screen w-screen flex flex-col overflow-hidden bg-[#0D1117] text-[#c9d1d9] ${inter.className}`}>
+    <div
+      className={`h-screen w-screen flex flex-col overflow-hidden bg-[#0D1117] text-[#c9d1d9] ${inter.className}`}
+    >
       {/* Header */}
       <div className="shrink-0 bg-[#161B22] px-4 py-2 border-b border-[#30363D]">
         <div className="flex items-center gap-4">
@@ -452,7 +458,7 @@ export default function Home() {
       {/* Main editor area */}
       <div className="flex-1 flex min-w-0">
         {/* Media list */}
-        <MediaList 
+        <MediaList
           mediaList={mediaList}
           onMediaDragStart={handleMediaDragStart}
           ffmpegLoading={ffmpegLoading}
@@ -478,6 +484,7 @@ export default function Home() {
             loading={loading}
             timelineTracks={timelineTracks}
             setTimelineTracks={setTimelineTracks}
+            setSelectedClipInfo={setSelectedClipInfo}
           />
 
           {/* Chat panel */}
@@ -486,7 +493,7 @@ export default function Home() {
             <div className="p-4 border-b border-[#30363D] shrink-0">
               <h2 className="text-sm font-semibold text-[#c9d1d9]">Chat</h2>
             </div>
-            
+
             {/* Selected clips section - fixed height */}
             <div className="p-4 border-b border-[#30363D] shrink-0">
               <h3 className="text-xs font-medium text-[#8b949e] uppercase tracking-wider mb-3">
@@ -499,15 +506,16 @@ export default function Home() {
                   </div>
                 ) : (
                   clipsInRange.map((clip, index) => (
-                    <div 
-                      key={clip.id} 
+                    <div
+                      key={clip.id}
                       className="bg-[#21262D] rounded-md p-2 text-sm border border-[#30363D]"
                     >
                       <div className="font-medium text-[#c9d1d9]">
                         {clip.mediaName}
                       </div>
                       <div className="text-xs text-[#8b949e] mt-1">
-                        {formatTime(clip.start)} - {formatTime(clip.start + clip.duration)}
+                        {formatTime(clip.start)} -{" "}
+                        {formatTime(clip.start + clip.duration)}
                       </div>
                     </div>
                   ))
@@ -516,22 +524,24 @@ export default function Home() {
             </div>
 
             {/* Chat messages - with fixed height */}
-            <div 
+            <div
               ref={chatContainerRef}
               className="h-[300px] overflow-y-auto p-4 space-y-4 [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:bg-[#30363D] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
             >
               {messages.map((message, index) => (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className={`flex flex-col ${
-                    message.role === 'user' ? 'items-end' : 'items-start'
+                    message.role === "user" ? "items-end" : "items-start"
                   }`}
                 >
-                  <div className={`rounded-lg p-3 text-sm max-w-[80%] ${
-                    message.role === 'user' 
-                      ? 'bg-[#238636] text-white' 
-                      : 'bg-[#21262D] text-[#c9d1d9]'
-                  }`}>
+                  <div
+                    className={`rounded-lg p-3 text-sm max-w-[80%] ${
+                      message.role === "user"
+                        ? "bg-[#238636] text-white"
+                        : "bg-[#21262D] text-[#c9d1d9]"
+                    }`}
+                  >
                     {message.content}
                   </div>
                 </div>
@@ -546,7 +556,10 @@ export default function Home() {
             </div>
 
             {/* Chat input - fixed height */}
-            <form onSubmit={handleSendMessage} className="p-4 border-t border-[#30363D] shrink-0">
+            <form
+              onSubmit={handleSendMessage}
+              className="p-4 border-t border-[#30363D] shrink-0"
+            >
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -568,7 +581,7 @@ export default function Home() {
       <div className="h-64 shrink-0 bg-[#161B22] border-t border-[#30363D]">
         <div className="h-full flex flex-col p-4">
           {/* Timeline ruler */}
-          <div 
+          <div
             className="h-6 shrink-0 bg-[#0D1117] mb-2 relative cursor-pointer select-none border-b border-[#30363D]"
             onClick={handleTimelineClick}
             onMouseMove={handleTimelineMouseMove}
@@ -578,21 +591,23 @@ export default function Home() {
             {Array.from({ length: projectDuration + 1 }).map((_, i) => {
               const interval = projectDuration / 5; // Calculate the major interval
               const isMajorMarker = i % interval < 1; // Check if this is a major marker point
-              
+
               return (
                 <div
                   key={i}
                   className="absolute top-0 flex flex-col items-center"
-                  style={{ 
+                  style={{
                     left: `${(i / projectDuration) * 100}%`,
-                    transform: 'translateX(-50%)',
-                    borderLeft: isMajorMarker ? '1px solid #333333' : 'none',
-                    height: isMajorMarker ? '100%' : '0%', // Only show major markers
-                    display: isMajorMarker ? 'flex' : 'none' // Hide minor markers completely
+                    transform: "translateX(-50%)",
+                    borderLeft: isMajorMarker ? "1px solid #333333" : "none",
+                    height: isMajorMarker ? "100%" : "0%", // Only show major markers
+                    display: isMajorMarker ? "flex" : "none", // Hide minor markers completely
                   }}
                 >
                   {isMajorMarker && (
-                    <div className={`absolute top-2 text-[10px] text-[#8b949e] ${jetbrainsMono.className}`}>
+                    <div
+                      className={`absolute top-2 text-[10px] text-[#8b949e] ${jetbrainsMono.className}`}
+                    >
                       {formatTime(i)}
                     </div>
                   )}
@@ -601,16 +616,16 @@ export default function Home() {
             })}
 
             {/* Start Cursor (Red) */}
-            <div 
+            <div
               className="absolute top-0 bottom-0 z-10"
-              style={{ 
+              style={{
                 left: `${(startCursor / projectDuration) * 100}%`,
-                transform: 'translateX(-50%)'
+                transform: "translateX(-50%)",
               }}
             >
-              <div 
+              <div
                 className="absolute w-2.5 h-2.5 cursor-ew-resize"
-                style={{ top: '-4px', left: '-3.5px' }}
+                style={{ top: "-4px", left: "-3.5px" }}
                 onMouseDown={(e) => handleCursorMouseDown(e, true)}
               >
                 <div className="w-full h-full bg-red-500 transform rotate-45" />
@@ -619,16 +634,16 @@ export default function Home() {
             </div>
 
             {/* End Cursor (Blue) */}
-            <div 
+            <div
               className="absolute top-0 bottom-0 z-10"
-              style={{ 
+              style={{
                 left: `${(endCursor / projectDuration) * 100}%`,
-                transform: 'translateX(-50%)'
+                transform: "translateX(-50%)",
               }}
             >
-              <div 
+              <div
                 className="absolute w-2.5 h-2.5 cursor-ew-resize"
-                style={{ top: '-4px', left: '-3.5px' }}
+                style={{ top: "-4px", left: "-3.5px" }}
                 onMouseDown={(e) => handleCursorMouseDown(e, false)}
               >
                 <div className="w-full h-full bg-blue-500 transform rotate-45" />
@@ -637,17 +652,19 @@ export default function Home() {
             </div>
 
             {/* Playhead */}
-            <div 
-              className={`absolute top-0 bottom-0 pointer-events-none z-10 ${isDraggingPlayhead ? 'pointer-events-auto cursor-ew-resize' : ''}`}
-              style={{ 
+            <div
+              className={`absolute top-0 bottom-0 pointer-events-none z-10 ${
+                isDraggingPlayhead ? "pointer-events-auto cursor-ew-resize" : ""
+              }`}
+              style={{
                 left: `${(currentTime / projectDuration) * 100}%`,
-                transform: 'translateX(-50%)'
+                transform: "translateX(-50%)",
               }}
             >
               {/* Diamond marker */}
-              <div 
+              <div
                 className="absolute w-2.5 h-2.5 cursor-ew-resize"
-                style={{ top: '-4px', left: '-3.5px' }}
+                style={{ top: "-4px", left: "-3.5px" }}
                 onMouseDown={handlePlayheadMouseDown}
               >
                 <div className="w-full h-full bg-white transform rotate-45" />
@@ -664,46 +681,55 @@ export default function Home() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleTimelineDrop}
           >
-            {timelineTracks.map((track, trackIndex) => (
-              <div
-                key={trackIndex}
-                className="h-20 bg-[#0D1117] relative border-b border-[#30363D] last:border-b-0"
-              >
-                {track.map((clip, clipIndex) => {
-                  const media = mediaList.find(m => m.id === clip.mediaId);
-                  return (
-                    <div
-                      key={clip.id}
-                      onMouseDown={(e) => handleClipMouseDown(e, trackIndex, clipIndex)}
-                      onClick={(e) => handleClipClick(e, trackIndex, clipIndex, clip)}
-                      className={`absolute top-0 h-full cursor-move overflow-hidden border transition-colors
-                        ${selectedClipInfo?.clip.id === clip.id 
-                          ? 'bg-[#1f6feb] border-[#58a6ff]' 
-                          : 'bg-[#21262D] border-[#30363D] hover:bg-[#30363D]'}`}
-                      style={{
-                        left: `${(clip.start / projectDuration) * 100}%`,
-                        width: `${(clip.duration / projectDuration) * 100}%`,
-                      }}
-                    >
-                      <div className="flex h-full">
-                        {media?.thumbnails.map((thumb, i) => (
-                          <img
-                            key={i}
-                            src={thumb.url}
-                            alt=""
-                            className="h-full object-cover flex-shrink-0"
-                            style={{
-                              width: `${(clip.duration / media.thumbnails.length / projectDuration) * timelineRef.current?.clientWidth}px`
-                            }}
-                            draggable={false}
-                          />
-                        ))}
-                      </div>
+            <div
+              key={0}
+              className="h-20 bg-[#0D1117] relative border-b border-[#30363D] last:border-b-0"
+            >
+              {timelineTracks[0].map((clip, clipIndex) => {
+                const media = mediaList.find((m) => m.id === clip.mediaId);
+                return (
+                  <div
+                    key={clip.id}
+                    onMouseDown={(e) =>
+                      handleClipMouseDown(e, 0, clipIndex)
+                    }
+                    onClick={(e) =>
+                      handleClipClick(e, 0, clipIndex, clip)
+                    }
+                    className={`absolute top-0 h-full cursor-move overflow-hidden border transition-colors
+                      ${
+                        selectedClipInfo?.clip.id === clip.id
+                          ? "bg-[#1f6feb] border-[#58a6ff]"
+                          : "bg-[#21262D] border-[#30363D] hover:bg-[#30363D]"
+                      }`}
+                    style={{
+                      left: `${(clip.start / projectDuration) * 100}%`,
+                      width: `${(clip.duration / projectDuration) * 100}%`,
+                    }}
+                  >
+                    <div className="flex h-full">
+                      {media?.thumbnails.map((thumb, i) => (
+                        <img
+                          key={i}
+                          src={thumb.url}
+                          alt=""
+                          className="h-full object-cover flex-shrink-0"
+                          style={{
+                            width: `${
+                              (clip.duration /
+                                media.thumbnails.length /
+                                projectDuration) *
+                              timelineRef.current?.clientWidth
+                            }px`,
+                          }}
+                          draggable={false}
+                        />
+                      ))}
                     </div>
-                  );
-                })}
-              </div>
-            ))}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

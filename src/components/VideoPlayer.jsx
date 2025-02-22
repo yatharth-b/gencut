@@ -17,6 +17,7 @@ export default function VideoPlayer({
   loading,
   timelineTracks,
   setTimelineTracks,
+  setSelectedClipInfo,
 }) {
   const formatTime = (time) => {
     const minutes = Math.floor(time / 60);
@@ -172,68 +173,73 @@ export default function VideoPlayer({
       setLoading(false);
     }
   };
+  const cutClip = (clipId, cutPoint) => {
+
+    const clipToCut = timelineTracks[0].find(c => c.id === clipId);
+    console.log('cliptocut')
+    console.log(clipToCut)
+    if (!clipToCut) {
+        console.error("Clip not found with ID:", clipId);
+        return;
+    }
+    console.log("cutClip", clipToCut, cutPoint);
+    const firstHalf = {
+      id: Date.now(),
+      mediaId: clipToCut.mediaId,
+      start: clipToCut.start,
+      duration: cutPoint - clipToCut.start,
+      offset: clipToCut.offset,
+    };
+
+    const secondHalf = {
+      id: Date.now() + 1,
+      mediaId: clipToCut.mediaId,
+      start: cutPoint,
+      duration: clipToCut.start + clipToCut.duration - cutPoint,
+      offset: clipToCut.offset + (cutPoint - clipToCut.start),
+    };
+
+    // Update the single track directly
+    setTimelineTracks((prev) => {
+      const updatedTrack = prev[0].map((c) => {
+        if (c.id === clipToCut.id) {
+          // Replace the cut clip with the two new pieces
+          return [firstHalf, secondHalf];
+        }
+        return [c];
+      }).flat();
+
+      return [updatedTrack]; // Return a new array with the updated track
+    });
+
+  };
+
   const handleCutClip = () => {
     if (!selectedClipInfo) return;
 
-    const { trackIndex, clip } = selectedClipInfo;
+    const { clip } = selectedClipInfo; // No need for trackIndex since there's only one track
     const cutPoint = currentTime;
 
     // Only cut if the point is within the clip
     if (cutPoint <= clip.start || cutPoint >= clip.start + clip.duration)
       return;
-
-    const firstHalf = {
-      id: Date.now(),
-      mediaId: clip.mediaId,
-      start: clip.start,
-      duration: cutPoint - clip.start,
-      offset: clip.offset,
-    };
-
-    const secondHalf = {
-      id: Date.now() + 1,
-      mediaId: clip.mediaId,
-      start: cutPoint,
-      duration: clip.start + clip.duration - cutPoint,
-      offset: clip.offset + (cutPoint - clip.start),
-    };
-
-    setTimelineTracks((prev) =>
-      prev.map((track, i) => {
-        if (i === trackIndex) {
-          return track
-            .map((c) => {
-              if (c.id === clip.id) {
-                // Replace the cut clip with the two new pieces
-                return [firstHalf, secondHalf];
-              }
-              return [c];
-            })
-            .flat();
-        }
-        return track;
-      })
-    );
-
-    setSelectedClipInfo(null);
+    console.log(clip)
+    // Call the cutClip function to get the new clips
+    cutClip(clip.id, cutPoint);
+    setSelectedClipInfo(null); // Clear the selected clip info
   };
 
   // Add the delete handler function
   const handleDeleteClip = () => {
     if (!selectedClipInfo) return;
 
-    const { trackIndex, clip } = selectedClipInfo;
+    const { clip } = selectedClipInfo;
 
     setTimelineTracks((prev) =>
-      prev.map((track, i) => {
-        if (i === trackIndex) {
-          return track.filter((c) => c.id !== clip.id);
-        }
-        return track;
-      })
+      [prev[0].filter((c) => c.id !== clip.id)] // Filter out the deleted clip
     );
 
-    setSelectedClipInfo(null);
+    setSelectedClipInfo(null); // Clear the selected clip info
   };
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#0D1117]">

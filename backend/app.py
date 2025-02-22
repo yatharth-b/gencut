@@ -60,6 +60,24 @@ AVAILABLE_FUNCTIONS = {
             },
             "required": ["start_time", "end_time"]
         }
+    },
+    "cutClip": {
+        "name": "cutClip",
+        "description": "Cut a video clip at a specified point",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to cut"
+                },
+                "cutPoint": {
+                    "type": "number",
+                    "description": "Time in seconds where the clip will be cut"
+                }
+            },
+            "required": ["clipId", "cutPoint"]
+        }
     }
 }
 
@@ -145,13 +163,14 @@ def get_transcript(video_path):
     print("audiopath")
     audio.write_audiofile(audio_path)
 
-    audio_file = open(audio_path, "rb")
-    transcript = client.audio.transcriptions.create(
-        file=audio_file,
-        model="whisper-1",
-        response_format="verbose_json",
-        timestamp_granularities=["word"]
-    )
+    # Use a context manager to ensure the file is closed after use
+    with open(audio_path, "rb") as audio_file:
+        transcript = client.audio.transcriptions.create(
+            file=audio_file,
+            model="whisper-1",
+            response_format="verbose_json",
+            timestamp_granularities=["word"]
+        )
 
     sec_transcription = [[] for _ in range(math.ceil(transcript.duration))]
 
@@ -162,7 +181,6 @@ def get_transcript(video_path):
     for sec in range(len(sec_transcription)):
         sec_transcription[sec] = ' '.join(sec_transcription[sec])
     
-    # return sec_transcription
     os.remove(audio_path)
     os.rmdir(audio_temp_dir)
     return sec_transcription[1:-1] 
@@ -182,12 +200,11 @@ def preprocess():
         video_path = os.path.join(video_temp_dir, f"{secure_filename(video_file.name)}")
         video_file.save(video_path)
 
-        # Use the global executor
-        image_desc_future = executor.submit(preprocess_image, video_duration, video_path)
-        transcription_future = executor.submit(get_transcript, video_path)
-
-        image_desc, attrs = image_desc_future.result()
-        transcription = transcription_future.result()
+        future_image_desc = executor.submit(preprocess_image, video_duration, video_path)
+        future_transcription = executor.submit(get_transcript, video_path)
+        
+        image_desc, attrs = future_image_desc.result()
+        transcription = future_transcription.result()
 
         os.remove(video_path)
         os.rmdir(video_temp_dir)
@@ -213,6 +230,7 @@ def chat():
         messages = data.get('messages', [])
         print(messages)
         clip_contexts = data.get('clipContexts', [])
+        print(clip_contexts)
 
         # print(clip_contexts)
         
@@ -225,24 +243,8 @@ def chat():
 
         formatted_messages.append({
             "role": "user",
-            "content": f"here is the context for all my videos: \n{'\n'.join(clip_contexts)}"
+            "content": f"here is the context for all my videos: {' '.join(clip_contexts)}"
         })
-
-
-        # messages = [
-        #     {
-        #         "role": "system",
-        #         "content": "You are a helpful assistant that helps users understand and edit videos. Use the provided clip information to give accurate answers."
-        #     },
-        #     {
-        #         "role": "assistant",
-        #         "content": context_message
-        #     },
-        #     {
-        #         "role": "user",
-        #         "content": user_message
-        #     }
-        # ]
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -259,13 +261,13 @@ def chat():
         # If there's a function call
         if hasattr(assistant_message, 'function_call') and assistant_message.function_call:
             function_name = assistant_message.function_call.name
-            function_args = eval(assistant_message.function_call.arguments)
             
             result = trim_video(**function_args)
             return jsonify({
                 "type": "function_call",
                 "result": result,
-                "message": assistant_message.content or "I'll help you trim the video."
+                "function_call": assistant_message.function_call
+                "message": assistant_message.content or "Ok."
             })
 
         # If it's just a regular message
