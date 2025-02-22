@@ -44,6 +44,13 @@ export default function Home() {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
 
+  // Add state for chat context
+  const [chatContext, setChatContext] = useState({
+    imageDescriptions: [],
+    transcription: [],
+    initialized: false
+  });
+
   // Load FFmpeg
   useEffect(() => {
     const loadFFmpeg = async () => {
@@ -274,20 +281,106 @@ export default function Home() {
     setSelectedClipInfo({ trackIndex, clipIndex, clip });
   };
 
+  // Modify handleVideoUpload to set chat context
+  const handleVideoUpload = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setVideoFile(file);
+      const url = URL.createObjectURL(file);
+      setVideoUrl(url);
+      setTrimmedVideoUrl(null);
+      setStartTime(0);
+      setEndTime(0);
+      setCurrentTime(0);
+      
+      try {
+        setLoading(true);
+        const formData = new FormData();
+        formData.append('video', file);
+        formData.append('duration', duration.toString());
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!inputMessage.trim()) return;
-    
-    setMessages(prev => [...prev, {
-      id: Date.now(),
-      text: inputMessage.trim(),
-      timestamp: new Date()
-    }]);
-    setInputMessage('');
+        const response = await fetch('http://localhost:5050/api/preprocess', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+        console.log('Preprocessed data:', data);
+
+        // Set chat context
+        setChatContext({
+          imageDescriptions: data.image_description,
+          transcription: data.transcription,
+          initialized: true
+        });
+
+        // Add initial messages with video analysis
+        setMessages([
+          {
+            role: 'assistant',
+            content: "I've analyzed your video. Here's what I found:"
+          },
+          {
+            role: 'assistant',
+            content: `Video Analysis:\n${data.image_description.join('\n')}`
+          },
+          {
+            role: 'assistant',
+            content: `Transcription:\n${data.transcription.join(' ')}`
+          }
+        ]);
+
+      } catch (error) {
+        console.error('Error preprocessing video:', error);
+        alert('Failed to process video. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    }
   };
 
-  
+  // Modify handleChatSubmit to include context
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!inputMessage.trim()) return;
+
+    const userMessage = inputMessage.trim();
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setInputMessage('');
+    setIsChatLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:5050/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          context: {
+            imageDescriptions: chatContext.imageDescriptions,
+            transcription: chatContext.transcription
+          }
+        }),
+      });
+
+      const data = await response.json();
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: data.message 
+      }]);
+
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: 'Sorry, I encountered an error processing your request.' 
+      }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
   useEffect(() => {
     let lastTime = performance.now();
     let frameId;
