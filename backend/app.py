@@ -9,6 +9,9 @@ import numpy as np
 import base64
 from werkzeug.utils import secure_filename
 import tempfile
+from moviepy import VideoFileClip
+import utils
+import math
 
 # Load environment variables
 load_dotenv()
@@ -61,59 +64,139 @@ AVAILABLE_FUNCTIONS = {
 # Add conversation history storage
 conversation_history = []
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
+def gpt_frame_desc(base64_image):
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a helpful assistant for the blind. describe the frame as specificely as you can. be specific in terms of the colors in the frame, what might be happening to the best of your knowledge. be as specific as you can."
+        },
+        {"role": "user", "content": [
+                {"type": "text", "text": f"Here is a frame from a video. Describe it vividly."},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}"
+                    }
+                }
+            ]}
+
+    ]
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        max_tokens=500
+    )
+
+    return response.choices[0].message.content
+
+
+def preprocess_image(video_duration, video_file):
+    # returns image description per second and 
+
+    temp_dir = tempfile.mkdtemp()
+    video_path = os.path.join(temp_dir, secure_filename(video_file.name))
+    video_file.save(video_path)
+
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frames = []
+    frame_count = 0
+
+    attrs = []
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+            
+        if frame_count % int(fps) == 0:
+            # Convert frame to JPEG
+            _, buffer = cv2.imencode('.jpg', frame)
+            base64_frame = base64.b64encode(buffer).decode('utf-8')
+            frames.append(gpt_frame_desc(base64_frame))
+        
+        attrs.append({
+            "rgb_level": utils.get_rgb_levels(frame),
+            "saturation": utils.get_saturation(frame),
+            "contrast": utils.get_contrast(frame),
+            "brightness": utils.get_brightness(frame)
+        })
+        
+        frame_count += 1
+
+    cap.release()
+    
+    os.remove(video_path)
+    os.rmdir(temp_dir)
+
+    return frames, attrs
+
+def get_transcript(video_file):
+    video_temp_dir = tempfile.mkdtemp()
+    video_path = os.path.join(video_temp_dir, secure_filename(video_file.name))
+    video_file.save(video_path)
+
+    audio = VideoFileClip(video_path).audio
+
+    audio_temp_dir = tempfile.mkdtemp()
+    audio_path = os.path.join(audio_temp_dir, secure_filename(f'audio.wav'))
+    audio.write_audiofile(audio_path)
+
+    audio_file = open(audio_path, "rb")
+    transcript = client.audio.transcriptions.create(
+        file=audio_file,
+        model="whisper-1",
+        response_format="verbose_json",
+        timestamp_granularities=["word"]
+    )
+
+    sec_transcription = [[] for _ in range(math.ceil(transcript.duration))]
+
+    for word in transcript.words:
+        for sec in range(int(word.start), math.ceil(word.end)):
+            sec_transcription[sec].append(word.word)
+
+    for sec in range(len(sec_transcription)):
+        sec_transcription[sec] = ' '.join(sec_transcription[sec])
+    
+    # return sec_transcription
+    os.remove(video_path)
+    os.rmdir(video_temp_dir)
+    os.remove(audio_path)
+    os.rmdir(audio_temp_dir)
+    return sec_transcription
+
+
+@app.route('/api/preprocess', methods=['POST'])
+def preprocess():
+
+    logger.info("Started processing")
     try:
-        user_message = request.form.get('message')
         video_duration = float(request.form.get('duration', 0))
         video_file = request.files.get('video')
 
         if not video_file:
             return jsonify({'error': 'No video file provided'}), 400
-
-        # Save video to temporary file
-        temp_dir = tempfile.mkdtemp()
-        video_path = os.path.join(temp_dir, secure_filename(video_file.filename))
-        video_file.save(video_path)
-
-        # Extract frames using OpenCV
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frames = []
-        frame_count = 0
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-                
-            # Extract one frame per second
-            if frame_count % int(fps) == 0:
-                # Convert frame to JPEG
-                _, buffer = cv2.imencode('.jpg', frame)
-                base64_frame = base64.b64encode(buffer).decode('utf-8')
-                print(base64_frame)
-                
-                # Add frame in GPT-4 Vision format
-                frames.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{base64_frame}"
-                    }
-                })
-            
-            frame_count += 1
-            
-            # Limit to first 10 seconds of frames
-            if frame_count >= fps * 10:
-                break
-
-        cap.release()
         
-        # Cleanup
-        os.remove(video_path)
-        os.rmdir(temp_dir)
+        image_desc, attrs = preprocess_image(video_duration, video_file)
+        transcription = get_transcript(video_file)
 
+        return jsonify({
+            'image_description': image_desc,
+            'image_attr': attrs,
+            'transcription': transcription
+        })
+
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    try:
+        user_message = request.form.get('message')
         # Prepare message content
         content = [
             {
@@ -178,7 +261,10 @@ def chat():
         logger.error(f"Error in chat endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/health', methods=['GET'])
+def check_health():
+    return jsonify({'healthy': 'true'})
+
 if __name__ == '__main__':
     logger.info("Starting Flask server...")
     app.run(host='0.0.0.0', port=5050, debug=True)
-
