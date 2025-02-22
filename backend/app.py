@@ -12,6 +12,8 @@ import tempfile
 from moviepy import VideoFileClip
 import utils
 import math
+from concurrent.futures import ThreadPoolExecutor
+import atexit
 
 # Load environment variables
 load_dotenv()
@@ -64,6 +66,9 @@ AVAILABLE_FUNCTIONS = {
 # Add conversation history storage
 conversation_history = []
 
+# At the top of the file, after imports
+executor = ThreadPoolExecutor(max_workers=4)  # Create a global executor
+
 def gpt_frame_desc(base64_image):
     messages = [
         {
@@ -93,7 +98,7 @@ def gpt_frame_desc(base64_image):
 
 def preprocess_image(video_duration, video_file):
     # returns image description per second and 
-
+    print("in preprocess image")
     temp_dir = tempfile.mkdtemp()
     video_path = os.path.join(temp_dir, secure_filename(video_file.name))
     video_file.save(video_path)
@@ -105,31 +110,38 @@ def preprocess_image(video_duration, video_file):
 
     attrs = []
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+    with ThreadPoolExecutor() as executor:
+        while cap.isOpened():
+            print("in while loop")
+            ret, frame = cap.read()
+            if not ret:
+                break
             
-        if frame_count % int(fps) == 0:
-            # Convert frame to JPEG
-            _, buffer = cv2.imencode('.jpg', frame)
-            base64_frame = base64.b64encode(buffer).decode('utf-8')
-            frames.append(gpt_frame_desc(base64_frame))
+            if frame_count % int(fps) == 0:
+                # Convert frame to JPEG
+                _, buffer = cv2.imencode('.jpg', frame)
+                base64_frame = base64.b64encode(buffer).decode('utf-8')
+                
+                # Submit the gpt_frame_desc call to the executor
+                future = executor.submit(gpt_frame_desc, base64_frame)
+                frames.append(future)  # Store the future object
 
-        
-            attrs.append({
-                "rgb_level": utils.get_rgb_levels(frame),
-                "saturation": utils.get_saturation(frame),
-                "contrast": utils.get_contrast(frame),
-                "brightness": utils.get_brightness(frame)
-            })
-        
-        frame_count += 1
+                attrs.append({
+                    "rgb_level": utils.get_rgb_levels(frame),
+                    "saturation": utils.get_saturation(frame),
+                    "contrast": utils.get_contrast(frame),
+                    "brightness": utils.get_brightness(frame)
+                })
+            
+            frame_count += 1
 
     cap.release()
     
     os.remove(video_path)
     os.rmdir(temp_dir)
+
+    # Wait for all futures to complete and retrieve results
+    frames = [future.result() for future in frames]
 
     return frames, attrs
 
@@ -174,7 +186,6 @@ def get_transcript(video_file):
 
 @app.route('/api/preprocess', methods=['POST'])
 def preprocess():
-
     logger.info("Started processing")
     try:
         video_duration = float(request.form.get('duration', 0))
@@ -278,6 +289,9 @@ def formatTime(seconds):
 @app.route('/api/health', methods=['GET'])
 def check_health():
     return jsonify({'healthy': 'true'})
+
+# Ensure to shut down the executor when the application is stopped
+atexit.register(executor.shutdown)
 
 if __name__ == '__main__':
     logger.info("Starting Flask server...")
