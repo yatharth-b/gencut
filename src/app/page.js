@@ -287,44 +287,57 @@ export default function Home() {
   };
 
   const cutClip = (clipId, cutPoint) => {
-    console.log(timelineTracks)
+    console.log(timelineTracks);
     const clipToCut = timelineTracks[0].find(c => c.id === clipId);
-    console.log('cliptocut')
-    console.log(clipToCut)
+    console.log('cliptocut');
+    console.log(clipToCut);
     if (!clipToCut) {
         console.error("Clip not found with ID:", clipId);
         return;
     }
     console.log("cutClip", clipToCut, cutPoint);
+
+    // Calculate the first half
     const firstHalf = {
-      id: Date.now().toString(),
-      mediaId: clipToCut.mediaId,
-      start: clipToCut.start,
-      duration: cutPoint - clipToCut.start,
-      offset: clipToCut.offset,
+        id: Date.now().toString(),
+        mediaId: clipToCut.mediaId,
+        start: clipToCut.start,
+        duration: cutPoint,
+        offset: clipToCut.offset,
+        // Filter attributes for the first half
+        imageDescriptions: clipToCut.imageDescriptions.slice(0, Math.ceil(cutPoint)),
+        imageAttributes: clipToCut.imageAttributes.slice(0, Math.ceil(cutPoint)),
+        transcription: clipToCut.transcription.slice(0, Math.ceil(cutPoint)),
     };
 
+    // Calculate the second half
     const secondHalf = {
-      id: (Date.now() + 1).toString(),
-      mediaId: clipToCut.mediaId,
-      start: cutPoint,
-      duration: clipToCut.start + clipToCut.duration - cutPoint,
-      offset: clipToCut.offset + (cutPoint - clipToCut.start),
+        id: (Date.now() + 1).toString(),
+        mediaId: clipToCut.mediaId,
+        start: clipToCut.start + cutPoint,
+        duration: clipToCut.duration - cutPoint,
+        offset: clipToCut.offset + cutPoint,
+        // Filter attributes for the second half
+        imageDescriptions: clipToCut.imageDescriptions.slice(Math.ceil(cutPoint)),
+        imageAttributes: clipToCut.imageAttributes.slice(Math.ceil(cutPoint)),
+        transcription: clipToCut.transcription.slice(Math.ceil(cutPoint)),
     };
+
+    console.log(firstHalf)
+    console.log(secondHalf)
 
     // Update the single track directly
     setTimelineTracks((prev) => {
-      const updatedTrack = prev[0].map((c) => {
-        if (c.id === clipToCut.id) {
-          // Replace the cut clip with the two new pieces
-          return [firstHalf, secondHalf];
-        }
-        return [c];
-      }).flat();
+        const updatedTrack = prev[0].map((c) => {
+            if (c.id === clipToCut.id) {
+                // Replace the cut clip with the two new pieces
+                return [firstHalf, secondHalf];
+            }
+            return [c];
+        }).flat();
 
-      return [updatedTrack]; // Return a new array with the updated track
+        return [updatedTrack]; // Return a new array with the updated track
     });
-
   };
 
   const handleClipClick = (e, trackIndex, clipIndex, clip) => {
