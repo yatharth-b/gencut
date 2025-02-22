@@ -78,6 +78,24 @@ AVAILABLE_FUNCTIONS = {
             },
             "required": ["clipId", "cutPoint"]
         }
+    },
+    "moveClip": {
+        "name": "moveClip",
+        "description": "Moves a video clip to start from a specified location.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to move"
+                },
+                "start": {
+                    "type": "number",
+                    "description": "Time in seconds where the clip will now start from"
+                }
+            },
+            "required": ["clipId", "start"]
+        }
     }
 }
 
@@ -248,12 +266,10 @@ def chat():
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=formatted_messages,
-            functions=[AVAILABLE_FUNCTIONS["trim_video"], AVAILABLE_FUNCTIONS['cutClip']],
+            functions=[AVAILABLE_FUNCTIONS["trim_video"], AVAILABLE_FUNCTIONS['cutClip'], AVAILABLE_FUNCTIONS['moveClip']],
             function_call="auto",
             max_tokens=500
         )
-
-        print(response)
 
         assistant_message = response.choices[0].message
         
