@@ -166,8 +166,8 @@ def get_transcript(video_path):
     # return sec_transcription
     os.remove(audio_path)
     os.rmdir(audio_temp_dir)
-    return sec_transcription
-
+    return sec_transcription[1:-1] 
+    # This is because there is not really a message at 0 and last frame.. that should also be in the 1st and 2nd last timestamp
 
 @app.route('/api/preprocess', methods=['POST'])
 def preprocess():
