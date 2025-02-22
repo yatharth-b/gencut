@@ -340,6 +340,39 @@ export default function Home() {
     });
   };
 
+  const moveClip = (clipId, newStart) => {
+    console.log("Move clip", clipId, newStart);
+    const clipToMove = timelineTracks[0].find(c => c.id === clipId);
+    if (!clipToMove) {
+        console.error("Clip not found with ID:", clipId);
+        return;
+    }
+
+    const newClip = {
+      id: clipToMove.id,
+      mediaId: clipToMove.mediaId,
+      start: newStart,
+      duration: clipToMove.duration,
+      offset: clipToMove.offset
+    }
+
+    console.log("moveClip", clipToMove, newStart);
+    clipToMove.start = newStart;
+
+    // Update the single track directly
+    setTimelineTracks((prev) => {
+      const updatedTrack = prev[0].map((c) => {
+        if (c.id === clipToMove.id) {
+          // Replace the cut clip with the two new pieces
+          return newClip;
+        }
+        return c;
+      });
+
+      return [updatedTrack]; // Return a new array with the updated track
+    });
+  }
+
   const handleClipClick = (e, trackIndex, clipIndex, clip) => {
     e.stopPropagation(); // Prevent timeline click
     setSelectedClipInfo({ clip });
@@ -402,6 +435,13 @@ export default function Home() {
         const functionArgs = JSON.parse(data.function_args);
         console.log(functionArgs)
         cutClip(functionArgs.clipId, functionArgs.cutPoint);
+      }
+
+      // If it's a function call to rearrange the clips
+      if (data.function_name === "moveClip") {
+        const functionArgs = JSON.parse(data.function_args);
+        console.log(functionArgs)
+        moveClip(functionArgs.clipId, functionArgs.start);
       }
 
     } catch (error) {
