@@ -4,6 +4,8 @@ import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
 import Image from "next/image";
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { Button } from "@/components/ui/button";
+import MediaList from "@/components/MediaList";
+import VideoPlayer from '@/components/VideoPlayer';
 
 const inter = Inter({ subsets: ['latin'] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'] });
@@ -13,31 +15,6 @@ const ffmpeg = createFFmpeg({
   log: true,
   corePath: 'https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js'
 });
-
-const FileInput = ({ onChange, disabled }) => {
-  const inputRef = useRef(null);
-
-  return (
-    <div>
-      <Button
-        onClick={() => inputRef.current?.click()}
-        disabled={disabled}
-        variant="secondary"
-        className="w-full"
-      >
-        Choose video
-      </Button>
-      <input
-        type="file"
-        ref={inputRef}
-        onChange={onChange}
-        accept="video/*"
-        disabled={disabled}
-        className="hidden"
-      />
-    </div>
-  );
-};
 
 export default function Home() {
   const [mediaList, setMediaList] = useState([]); // List of all uploaded videos
@@ -58,6 +35,13 @@ export default function Home() {
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [dragStartX, setDragStartX] = useState(null);
   const [selectedClipInfo, setSelectedClipInfo] = useState(null); // { trackIndex, clipIndex, clip }
+  const [startCursor, setStartCursor] = useState(0);
+  const [endCursor, setEndCursor] = useState(5); // Default to 5 seconds
+  const [isDraggingStartCursor, setIsDraggingStartCursor] = useState(false);
+  const [isDraggingEndCursor, setIsDraggingEndCursor] = useState(false);
+  const [clipsInRange, setClipsInRange] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [inputMessage, setInputMessage] = useState('');
 
   // Load FFmpeg
   useEffect(() => {
@@ -77,108 +61,8 @@ export default function Home() {
     loadFFmpeg();
   }, []);
 
-  const generateThumbnails = async (file, duration) => {
-    if (!ffmpegLoaded) {
-      console.error('FFmpeg not loaded');
-      return [];
-    }
-    
-    setLoading(true);
-    const thumbnails = [];
-    
-    try {
-      // Write the input file
-      ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(file));
 
-      const interval = Math.max(1, Math.floor(duration / 10)); // Generate 10 thumbnails
-      const totalThumbnails = Math.min(10, Math.floor(duration));
 
-      for (let i = 0; i < totalThumbnails; i++) {
-        const time = i * interval;
-        const outputName = `thumb_${i}.jpg`;
-
-        // Generate thumbnail
-        await ffmpeg.run(
-          '-ss', time.toString(),
-          '-i', 'input.mp4',
-          '-vf', 'scale=160:-1',
-          '-vframes', '1',
-          outputName
-        );
-
-        // Read and create thumbnail URL
-        const data = ffmpeg.FS('readFile', outputName);
-        const thumbnail = URL.createObjectURL(
-          new Blob([data.buffer], { type: 'image/jpeg' })
-        );
-        thumbnails.push({ time, url: thumbnail });
-
-        // Clean up the thumbnail file
-        ffmpeg.FS('unlink', outputName);
-      }
-
-      // Clean up input file
-      ffmpeg.FS('unlink', 'input.mp4');
-
-      return thumbnails;
-    } catch (error) {
-      console.error('Error generating thumbnails:', error);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVideoUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    if (ffmpegLoading || !ffmpegLoaded) {
-      alert('Please wait for video processing to initialize...');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const url = URL.createObjectURL(file);
-      const newMedia = {
-        id: Date.now(),
-        file,
-        url,
-        name: file.name,
-        duration: 0,
-        thumbnails: []
-      };
-      
-      // Get video duration
-      const video = document.createElement('video');
-      video.src = url;
-      await new Promise((resolve, reject) => {
-        video.onloadedmetadata = () => {
-          newMedia.duration = video.duration;
-          resolve();
-        };
-        video.onerror = reject;
-      });
-
-      // Add to media list first
-      setMediaList(prev => [...prev, newMedia]);
-
-      // Generate thumbnails
-      const thumbnails = await generateThumbnails(file, newMedia.duration);
-      
-      // Update media with thumbnails
-      setMediaList(prev => 
-        prev.map(m => m.id === newMedia.id ? { ...m, thumbnails } : m)
-      );
-
-    } catch (error) {
-      console.error('Error uploading video:', error);
-      alert('Failed to upload video. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const formatTime = (time) => {
     const minutes = Math.floor(time / 60);
@@ -363,35 +247,27 @@ export default function Home() {
   };
 
   const handleTimelineMouseMove = (e) => {
-    if (isDraggingPlayhead) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const percent = x / rect.width;
-      const newTime = Math.max(0, Math.min(projectDuration, percent * projectDuration));
+    if (!timelineRef.current) return;
+    
+    const rect = timelineRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percent = x / rect.width;
+    const newTime = Math.max(0, Math.min(projectDuration, percent * projectDuration));
+
+    if (isDraggingStartCursor) {
+      setStartCursor(Math.min(newTime, endCursor));
+    } else if (isDraggingEndCursor) {
+      setEndCursor(Math.max(newTime, startCursor));
+    } else if (isDraggingPlayhead) {
       setCurrentTime(newTime);
       updateVideoPlayback(newTime);
-    } else if (draggingClip) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left - draggingClip.offsetX;
-      const percent = x / rect.width;
-      const newStart = Math.max(0, Math.min(projectDuration, percent * projectDuration));
-      
-      // Update clip position in real-time
-      setTimelineTracks(prev => prev.map((track, i) => {
-        if (i === draggingClip.trackIndex) {
-          return track.map(clip => 
-            clip.id === draggingClip.clip.id 
-              ? { ...clip, start: newStart }
-              : clip
-          );
-        }
-        return track;
-      }));
     }
   };
 
   const handleTimelineMouseUp = () => {
     setIsDraggingPlayhead(false);
+    setIsDraggingStartCursor(false);
+    setIsDraggingEndCursor(false);
     setDraggingClip(null);
   };
 
@@ -400,63 +276,20 @@ export default function Home() {
     setSelectedClipInfo({ trackIndex, clipIndex, clip });
   };
 
-  const handleCutClip = () => {
-    if (!selectedClipInfo) return;
+
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    if (!inputMessage.trim()) return;
     
-    const { trackIndex, clip } = selectedClipInfo;
-    const cutPoint = currentTime;
-
-    // Only cut if the point is within the clip
-    if (cutPoint <= clip.start || cutPoint >= clip.start + clip.duration) return;
-
-    const firstHalf = {
+    setMessages(prev => [...prev, {
       id: Date.now(),
-      mediaId: clip.mediaId,
-      start: clip.start,
-      duration: cutPoint - clip.start,
-      offset: clip.offset
-    };
-
-    const secondHalf = {
-      id: Date.now() + 1,
-      mediaId: clip.mediaId,
-      start: cutPoint,
-      duration: (clip.start + clip.duration) - cutPoint,
-      offset: clip.offset + (cutPoint - clip.start)
-    };
-
-    setTimelineTracks(prev => prev.map((track, i) => {
-      if (i === trackIndex) {
-        return track.map(c => {
-          if (c.id === clip.id) {
-            // Replace the cut clip with the two new pieces
-            return [firstHalf, secondHalf];
-          }
-          return [c];
-        }).flat();
-      }
-      return track;
-    }));
-
-    setSelectedClipInfo(null);
+      text: inputMessage.trim(),
+      timestamp: new Date()
+    }]);
+    setInputMessage('');
   };
 
-  // Add the delete handler function
-  const handleDeleteClip = () => {
-    if (!selectedClipInfo) return;
-    
-    const { trackIndex, clip } = selectedClipInfo;
-    
-    setTimelineTracks(prev => prev.map((track, i) => {
-      if (i === trackIndex) {
-        return track.filter(c => c.id !== clip.id);
-      }
-      return track;
-    }));
-    
-    setSelectedClipInfo(null);
-  };
-
+  
   useEffect(() => {
     let lastTime = performance.now();
     let frameId;
@@ -495,12 +328,38 @@ export default function Home() {
     }
   }, [isDraggingPlayhead]);
 
+  useEffect(() => {
+    const clips = timelineTracks.flatMap((track, trackIndex) => 
+      track
+        .filter(clip => {
+          // Check if clip overlaps with cursor range
+          const clipEnd = clip.start + clip.duration;
+          return (clip.start <= endCursor && clipEnd >= startCursor);
+        })
+        .map(clip => ({
+          ...clip,
+          mediaName: mediaList.find(m => m.id === clip.mediaId)?.name || 'Unknown'
+        }))
+    );
+    
+    setClipsInRange(clips);
+  }, [startCursor, endCursor, timelineTracks, mediaList]);
+
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  };
+
+  const handleCursorMouseDown = (e, isCursorStart) => {
+    e.stopPropagation();
+    if (isCursorStart) {
+      setIsDraggingStartCursor(true);
+    } else {
+      setIsDraggingEndCursor(true);
+    }
   };
 
   return (
@@ -522,131 +381,99 @@ export default function Home() {
       </div>
 
       {/* Main editor area */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-w-0">
         {/* Media list */}
-        <div className="w-[500px] shrink-0 bg-[#161B22] p-4 overflow-y-auto border-r border-[#30363D]">
-          <h2 className="text-sm font-semibold mb-4 text-[#c9d1d9]">Media</h2>
-          <div className="mb-6">
-            <FileInput
-              onChange={handleVideoUpload}
-              disabled={ffmpegLoading}
-            />
-          </div>
-          <div className="space-y-2">
-            {mediaList.map(media => (
-              <div
-                key={media.id}
-                draggable
-                onDragStart={() => handleMediaDragStart(media)}
-                className="flex gap-3 p-2 rounded-md cursor-move bg-[#21262D] hover:bg-[#30363D] border border-[#30363D] group"
-              >
-                {/* Thumbnail */}
-                <div className="w-32 h-20 bg-black rounded overflow-hidden flex-shrink-0">
-                  {media.thumbnails[0] && (
-                    <img 
-                      src={media.thumbnails[0].url} 
-                      alt=""
-                      className="w-full h-full object-cover"
-                      draggable={false}
-                    />
-                  )}
-                </div>
-                
-                {/* Metadata */}
-                <div className="flex flex-col justify-between flex-1 min-w-0">
-                  <div>
-                    <div className="font-medium text-sm truncate text-[#c9d1d9]">
-                      {media.name}
-                    </div>
-                    <div className="text-xs text-[#8b949e] mt-1">
-                      {Math.round(media.duration)} seconds • {formatFileSize(media.file.size)}
-                    </div>
-                  </div>
-                  
-                  {/* Thumbnails preview */}
-                  <div className="flex gap-0.5 mt-2 h-6 overflow-hidden">
-                    {media.thumbnails.slice(0, 6).map((thumb, i) => (
-                      <img
-                        key={i}
-                        src={thumb.url}
-                        alt=""
-                        className="h-full w-auto object-cover rounded-sm"
-                        draggable={false}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <MediaList 
+          mediaList={mediaList}
+          onMediaDragStart={handleMediaDragStart}
+          ffmpegLoading={ffmpegLoading}
+          ffmpegLoaded={ffmpegLoaded}
+          setLoading={setLoading}
+          setMediaList={setMediaList}
+          ffmpeg={ffmpeg}
+        />
 
-        {/* Preview area */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#0D1117]">
-          {/* Video container */}
-          <div className="flex-1 flex items-center justify-center p-4 min-h-0">
-            <div className="relative w-full max-w-xl aspect-video bg-[#161B22] rounded-md overflow-hidden border border-[#30363D]">
-              <video
-                ref={videoRef}
-                className="absolute inset-0 w-full h-full object-contain"
-                onEnded={() => {
-                  videoRef.current?.pause();
-                }}
-              />
-              {!currentClip && (
-                <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-                  No video at current position
-                </div>
-              )}
+        {/* Preview and Chat area */}
+        <div className="flex-1 flex min-w-0">
+          {/* Video preview */}
+          <VideoPlayer
+            videoRef={videoRef}
+            currentClip={currentClip}
+            isPlaying={isPlaying}
+            setIsPlaying={setIsPlaying}
+            currentTime={currentTime}
+            projectDuration={projectDuration}
+            updateVideoPlayback={updateVideoPlayback}
+            setCurrentTime={setCurrentTime}
+            selectedClipInfo={selectedClipInfo}
+            loading={loading}
+            timelineTracks={timelineTracks}
+            setTimelineTracks={setTimelineTracks}
+          />
+
+          {/* Chat panel */}
+          <div className="w-[400px] shrink-0 bg-[#161B22] border-l border-[#30363D] flex flex-col">
+            <div className="p-4 border-b border-[#30363D]">
+              <h2 className="text-sm font-semibold text-[#c9d1d9]">Chat</h2>
             </div>
-          </div>
-          
-          {/* Timeline controls */}
-          <div className="shrink-0 px-4 pb-4 flex items-center gap-4">
-            <Button
-              onClick={() => {
-                const newIsPlaying = !isPlaying;
-                setIsPlaying(newIsPlaying);
-                
-                if (videoRef.current) {
-                  if (newIsPlaying) {
-                    updateVideoPlayback(currentTime);
-                  } else {
-                    videoRef.current.pause();
-                  }
-                }
-              }}
-            >
-              {isPlaying ? 'Pause' : 'Play'}
-            </Button>
             
-            {/* Cut button */}
-            <Button
-              onClick={handleCutClip}
-              disabled={!selectedClipInfo}
-              variant="secondary"
-            >
-              Cut
-            </Button>
-
-            {/* Delete button */}
-            <Button
-              onClick={handleDeleteClip}
-              disabled={!selectedClipInfo}
-              variant="destructive"
-            >
-              Delete
-            </Button>
-
-            <div className="flex-1 h-2 bg-[#21262D] rounded-full relative cursor-pointer">
-              <div
-                className="absolute h-full bg-[#58a6ff] rounded-full"
-                style={{ width: `${(currentTime / projectDuration) * 100}%` }}
-              />
+            {/* Selected clips section - fixed height */}
+            <div className="p-4 border-b border-[#30363D]">
+              <h3 className="text-xs font-medium text-[#8b949e] uppercase tracking-wider mb-3">
+                Selected Clips
+              </h3>
+              <div className="h-[120px] overflow-y-auto pr-2 space-y-2 [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:bg-[#30363D] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+                {clipsInRange.length === 0 ? (
+                  <div className="text-sm text-[#8b949e]">
+                    No clips selected
+                  </div>
+                ) : (
+                  clipsInRange.map((clip, index) => (
+                    <div 
+                      key={clip.id} 
+                      className="bg-[#21262D] rounded-md p-2 text-sm border border-[#30363D]"
+                    >
+                      <div className="font-medium text-[#c9d1d9]">
+                        {clip.mediaName}
+                      </div>
+                      <div className="text-xs text-[#8b949e] mt-1">
+                        {formatTime(clip.start)} - {formatTime(clip.start + clip.duration)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-            <span className={`text-sm ${jetbrainsMono.className}`}>
-              {formatTime(currentTime)} / {formatTime(projectDuration)}
-            </span>
+
+            {/* Chat messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.map(message => (
+                <div key={message.id} className="flex flex-col">
+                  <div className="bg-[#21262D] rounded-lg p-3 text-sm text-[#c9d1d9]">
+                    {message.text}
+                  </div>
+                  <span className="text-xs text-[#8b949e] mt-1">
+                    {new Date(message.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Chat input */}
+            <form onSubmit={handleSendMessage} className="p-4 border-t border-[#30363D]">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  placeholder="Type a message..."
+                  className="flex-1 bg-[#0D1117] text-[#c9d1d9] px-3 py-2 rounded-md border border-[#30363D] text-sm focus:outline-none focus:border-[#58a6ff]"
+                />
+                <Button type="submit" size="sm">
+                  Send
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -658,6 +485,8 @@ export default function Home() {
           <div 
             className="h-6 shrink-0 bg-[#0D1117] mb-2 relative cursor-pointer select-none border-b border-[#30363D]"
             onClick={handleTimelineClick}
+            onMouseMove={handleTimelineMouseMove}
+            onMouseUp={handleTimelineMouseUp}
           >
             {/* Time markers */}
             {Array.from({ length: projectDuration + 1 }).map((_, i) => {
@@ -684,6 +513,42 @@ export default function Home() {
                 </div>
               );
             })}
+
+            {/* Start Cursor (Red) */}
+            <div 
+              className="absolute top-0 bottom-0 z-10"
+              style={{ 
+                left: `${(startCursor / projectDuration) * 100}%`,
+                transform: 'translateX(-50%)'
+              }}
+            >
+              <div 
+                className="absolute w-2.5 h-2.5 cursor-ew-resize"
+                style={{ top: '-4px', left: '-3.5px' }}
+                onMouseDown={(e) => handleCursorMouseDown(e, true)}
+              >
+                <div className="w-full h-full bg-red-500 transform rotate-45" />
+              </div>
+              <div className="absolute top-0 w-[1px] h-[calc(100vh-12rem)] bg-red-500 opacity-50" />
+            </div>
+
+            {/* End Cursor (Blue) */}
+            <div 
+              className="absolute top-0 bottom-0 z-10"
+              style={{ 
+                left: `${(endCursor / projectDuration) * 100}%`,
+                transform: 'translateX(-50%)'
+              }}
+            >
+              <div 
+                className="absolute w-2.5 h-2.5 cursor-ew-resize"
+                style={{ top: '-4px', left: '-3.5px' }}
+                onMouseDown={(e) => handleCursorMouseDown(e, false)}
+              >
+                <div className="w-full h-full bg-blue-500 transform rotate-45" />
+              </div>
+              <div className="absolute top-0 w-[1px] h-[calc(100vh-12rem)] bg-blue-500 opacity-50" />
+            </div>
 
             {/* Playhead */}
             <div 
