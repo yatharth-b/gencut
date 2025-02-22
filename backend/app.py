@@ -215,29 +215,33 @@ def preprocess():
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
-        user_message = request.form.get('message')
-        # Prepare message content
-        content = [
-            {
-                "type": "text",
-                "text": f"The video is {video_duration} seconds long. {user_message}"
-            }
-        ]
-        content.extend(frames)
+        data = request.get_json()
+        user_message = data.get('message')
+        context = data.get('context', {})
+        
+        # Create context message from image descriptions and transcription
+        context_message = "Video Analysis:\n"
+        context_message += "\n".join(context.get('imageDescriptions', []))
+        context_message += "\n\nTranscription:\n"
+        context_message += " ".join(context.get('transcription', []))
 
         messages = [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that helps users trim videos or answer questions based on the video."
+                "content": "You are a helpful assistant that helps users trim videos or answer questions based on the video. Use the provided video analysis and transcription to give accurate answers."
+            },
+            {
+                "role": "assistant",
+                "content": context_message
             },
             {
                 "role": "user",
-                "content": content
+                "content": user_message
             }
         ]
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages,
             functions=[AVAILABLE_FUNCTIONS["trim_video"]],
             function_call="auto",
