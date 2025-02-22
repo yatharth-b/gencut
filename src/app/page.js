@@ -51,6 +51,13 @@ export default function Home() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatContainerRef = useRef(null);
 
+  // Add state for chat context
+  const [chatContext, setChatContext] = useState({
+    imageDescriptions: [],
+    transcription: [],
+    initialized: false
+  });
+
   // Load FFmpeg
   useEffect(() => {
     const loadFFmpeg = async () => {
@@ -306,7 +313,6 @@ export default function Home() {
     try {
       // Get clip contexts
       const clipContexts = clipsInRange.map(clip => JSON.stringify(clip));
-
       const response = await fetch('http://localhost:5050/api/chat', {
         method: 'POST',
         headers: {
@@ -319,7 +325,6 @@ export default function Home() {
       });
 
       const data = await response.json();
-
       console.log('chatgpt response:', data);
 
       // Add assistant's response to chat
@@ -330,7 +335,6 @@ export default function Home() {
       }]);
 
       // If it's a function call to trim video
-
 
     } catch (error) {
       console.error('Error sending message:', error);
