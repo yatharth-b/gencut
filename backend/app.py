@@ -96,12 +96,9 @@ def gpt_frame_desc(base64_image):
     return response.choices[0].message.content
 
 
-def preprocess_image(video_duration, video_file):
+def preprocess_image(video_duration, video_path):
     # returns image description per second and 
     print("in preprocess image")
-    temp_dir = tempfile.mkdtemp()
-    video_path = os.path.join(temp_dir, secure_filename(video_file.name))
-    video_file.save(video_path)
 
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -136,24 +133,14 @@ def preprocess_image(video_duration, video_file):
             frame_count += 1
 
     cap.release()
-    
-    os.remove(video_path)
-    os.rmdir(temp_dir)
 
     # Wait for all futures to complete and retrieve results
     frames = [future.result() for future in frames]
 
     return frames, attrs
 
-def get_transcript(video_file):
-    print("in getting transcript")
-    video_temp_dir = tempfile.mkdtemp()
-    video_path = os.path.join(video_temp_dir, f"{secure_filename(video_file.name)}")
-    video_file.save(video_path)
-    print(f"video path: {video_path}")
-    print('calling moviepi')
+def get_transcript(video_path):
     audio = VideoFileClip(video_path).audio
-
     audio_temp_dir = tempfile.mkdtemp()
     audio_path = os.path.join(audio_temp_dir, secure_filename(f'audio.wav'))
     print("audiopath")
@@ -177,8 +164,6 @@ def get_transcript(video_file):
         sec_transcription[sec] = ' '.join(sec_transcription[sec])
     
     # return sec_transcription
-    os.remove(video_path)
-    os.rmdir(video_temp_dir)
     os.remove(audio_path)
     os.rmdir(audio_temp_dir)
     return sec_transcription
@@ -193,18 +178,27 @@ def preprocess():
 
         if not video_file:
             return jsonify({'error': 'No video file provided'}), 400
+        
+        video_temp_dir = tempfile.mkdtemp()
+        video_path = os.path.join(video_temp_dir, f"{secure_filename(video_file.name)}")
+        video_file.save(video_path)
 
         # Use the global executor
-        image_desc_future = executor.submit(preprocess_image, video_duration, video_file)
-        # transcription_future = executor.submit(get_transcript, video_file)
+        image_desc_future = executor.submit(preprocess_image, video_duration, video_path)
+        transcription_future = executor.submit(get_transcript, video_path)
 
         image_desc, attrs = image_desc_future.result()
-        # transcription = transcription_future.result()
+        transcription = transcription_future.result()
+
+        os.remove(video_path)
+        os.rmdir(video_temp_dir)
+
+        logger.info("Successfully finished preprocessing")
 
         return jsonify({
-            'image_description': image_desc,
-            'image_attr': attrs,
-            'transcription': ''
+            'image_description': '',
+            'image_attr': '',
+            'transcription': transcription
         })
 
     except Exception as e:
