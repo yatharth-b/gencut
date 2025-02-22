@@ -2,12 +2,42 @@
 import { useState, useRef, useEffect } from 'react';
 import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
 import Image from "next/image";
+import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Button } from "@/components/ui/button";
+
+const inter = Inter({ subsets: ['latin'] });
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'] });
 
 // Create FFmpeg instance outside the component
 const ffmpeg = createFFmpeg({ 
   log: true,
   corePath: 'https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js'
 });
+
+const FileInput = ({ onChange, disabled }) => {
+  const inputRef = useRef(null);
+
+  return (
+    <div>
+      <Button
+        onClick={() => inputRef.current?.click()}
+        disabled={disabled}
+        variant="secondary"
+        className="w-full"
+      >
+        Choose video
+      </Button>
+      <input
+        type="file"
+        ref={inputRef}
+        onChange={onChange}
+        accept="video/*"
+        disabled={disabled}
+        className="hidden"
+      />
+    </div>
+  );
+};
 
 export default function Home() {
   const [mediaList, setMediaList] = useState([]); // List of all uploaded videos
@@ -25,6 +55,9 @@ export default function Home() {
   const timelineRef = useRef(null);
   const [currentClip, setCurrentClip] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+  const [dragStartX, setDragStartX] = useState(null);
+  const [selectedClipInfo, setSelectedClipInfo] = useState(null); // { trackIndex, clipIndex, clip }
 
   // Load FFmpeg
   useEffect(() => {
@@ -158,9 +191,62 @@ export default function Home() {
     setDraggingMedia(media);
   };
 
-  const handleClipDragStart = (trackIndex, clipIndex) => {
+  const handleClipDragStart = (e, trackIndex, clipIndex) => {
+    e.preventDefault(); // Prevent default drag image
     const clip = timelineTracks[trackIndex][clipIndex];
     setDraggingClip({ clip, trackIndex, clipIndex });
+  };
+
+  const handleClipMouseDown = (e, trackIndex, clipIndex) => {
+    e.preventDefault();
+    const clip = timelineTracks[trackIndex][clipIndex];
+    const rect = timelineRef.current.getBoundingClientRect();
+    const startX = e.clientX - rect.left;
+    
+    setDragStartX(startX);
+    setDraggingClip({ 
+      clip, 
+      trackIndex, 
+      clipIndex,
+      initialStart: clip.start
+    });
+
+    // Add window-level event listeners
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!draggingClip || !timelineRef.current) return;
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const deltaX = currentX - dragStartX;
+    const timeDelta = (deltaX / rect.width) * projectDuration;
+    const newStart = Math.max(0, Math.min(
+      projectDuration - draggingClip.clip.duration,
+      draggingClip.initialStart + timeDelta
+    ));
+
+    setTimelineTracks(prev => prev.map((track, i) => {
+      if (i === draggingClip.trackIndex) {
+        return track.map(clip => 
+          clip.id === draggingClip.clip.id 
+            ? { ...clip, start: newStart }
+            : clip
+        );
+      }
+      return track;
+    }));
+  };
+
+  const handleMouseUp = () => {
+    if (draggingClip) {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setDraggingClip(null);
+      setDragStartX(null);
+    }
   };
 
   const handleTimelineDrop = (e) => {
@@ -261,15 +347,114 @@ export default function Home() {
   };
 
   const handleTimelineClick = (e) => {
-    if (!timelineRef.current) return;
-    
-    const rect = timelineRef.current.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percent = x / rect.width;
-    const newTime = percent * projectDuration;
+    const newTime = Math.max(0, Math.min(projectDuration, percent * projectDuration));
     
     setCurrentTime(newTime);
     updateVideoPlayback(newTime);
+  };
+
+  const handlePlayheadMouseDown = (e) => {
+    e.stopPropagation();
+    setIsDraggingPlayhead(true);
+    setIsPlaying(false); // Pause while dragging
+  };
+
+  const handleTimelineMouseMove = (e) => {
+    if (isDraggingPlayhead) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const percent = x / rect.width;
+      const newTime = Math.max(0, Math.min(projectDuration, percent * projectDuration));
+      setCurrentTime(newTime);
+      updateVideoPlayback(newTime);
+    } else if (draggingClip) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left - draggingClip.offsetX;
+      const percent = x / rect.width;
+      const newStart = Math.max(0, Math.min(projectDuration, percent * projectDuration));
+      
+      // Update clip position in real-time
+      setTimelineTracks(prev => prev.map((track, i) => {
+        if (i === draggingClip.trackIndex) {
+          return track.map(clip => 
+            clip.id === draggingClip.clip.id 
+              ? { ...clip, start: newStart }
+              : clip
+          );
+        }
+        return track;
+      }));
+    }
+  };
+
+  const handleTimelineMouseUp = () => {
+    setIsDraggingPlayhead(false);
+    setDraggingClip(null);
+  };
+
+  const handleClipClick = (e, trackIndex, clipIndex, clip) => {
+    e.stopPropagation(); // Prevent timeline click
+    setSelectedClipInfo({ trackIndex, clipIndex, clip });
+  };
+
+  const handleCutClip = () => {
+    if (!selectedClipInfo) return;
+    
+    const { trackIndex, clip } = selectedClipInfo;
+    const cutPoint = currentTime;
+
+    // Only cut if the point is within the clip
+    if (cutPoint <= clip.start || cutPoint >= clip.start + clip.duration) return;
+
+    const firstHalf = {
+      id: Date.now(),
+      mediaId: clip.mediaId,
+      start: clip.start,
+      duration: cutPoint - clip.start,
+      offset: clip.offset
+    };
+
+    const secondHalf = {
+      id: Date.now() + 1,
+      mediaId: clip.mediaId,
+      start: cutPoint,
+      duration: (clip.start + clip.duration) - cutPoint,
+      offset: clip.offset + (cutPoint - clip.start)
+    };
+
+    setTimelineTracks(prev => prev.map((track, i) => {
+      if (i === trackIndex) {
+        return track.map(c => {
+          if (c.id === clip.id) {
+            // Replace the cut clip with the two new pieces
+            return [firstHalf, secondHalf];
+          }
+          return [c];
+        }).flat();
+      }
+      return track;
+    }));
+
+    setSelectedClipInfo(null);
+  };
+
+  // Add the delete handler function
+  const handleDeleteClip = () => {
+    if (!selectedClipInfo) return;
+    
+    const { trackIndex, clip } = selectedClipInfo;
+    
+    setTimelineTracks(prev => prev.map((track, i) => {
+      if (i === trackIndex) {
+        return track.filter(c => c.id !== clip.id);
+      }
+      return track;
+    }));
+    
+    setSelectedClipInfo(null);
   };
 
   useEffect(() => {
@@ -302,18 +487,34 @@ export default function Home() {
     updateVideoPlayback(currentTime);
   }, [currentTime]);
 
+  useEffect(() => {
+    if (isDraggingPlayhead) {
+      const handleMouseUp = () => setIsDraggingPlayhead(false);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => window.removeEventListener('mouseup', handleMouseUp);
+    }
+  }, [isDraggingPlayhead]);
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  };
+
   return (
-    <div className="h-screen flex flex-col bg-gray-900 text-white">
-      {/* Project settings */}
-      <div className="bg-gray-800 p-4 border-b border-gray-700">
+    <div className={`h-screen w-screen flex flex-col overflow-hidden bg-[#0D1117] text-[#c9d1d9] ${inter.className}`}>
+      {/* Header */}
+      <div className="shrink-0 bg-[#161B22] px-4 py-2 border-b border-[#30363D]">
         <div className="flex items-center gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Project Duration (seconds)</label>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">Duration (s):</label>
             <input
               type="number"
               value={projectDuration}
               onChange={(e) => setProjectDuration(Number(e.target.value))}
-              className="bg-gray-700 text-white px-3 py-1 rounded"
+              className="bg-[#0D1117] text-[#c9d1d9] px-2 py-1 rounded border border-[#30363D] w-20 text-sm focus:border-[#58a6ff] focus:outline-none"
               min="1"
             />
           </div>
@@ -323,50 +524,72 @@ export default function Home() {
       {/* Main editor area */}
       <div className="flex-1 flex min-h-0">
         {/* Media list */}
-        <div className="w-64 bg-gray-800 p-4 overflow-y-auto border-r border-gray-700">
-          <h2 className="text-lg font-semibold mb-4">Media</h2>
-          <input
-            type="file"
-            accept="video/*"
-            onChange={handleVideoUpload}
-            disabled={ffmpegLoading}
-            className={`mb-4 block w-full text-sm text-gray-400
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-full file:border-0
-              file:text-sm file:font-semibold
-              file:bg-violet-900 file:text-violet-100
-              ${ffmpegLoading ? 'opacity-50 cursor-not-allowed' : 'hover:file:bg-violet-800'}`}
-          />
-          {ffmpegLoading && (
-            <div className="text-sm text-gray-400 mb-4">
-              Initializing video processing...
-            </div>
-          )}
+        <div className="w-[500px] shrink-0 bg-[#161B22] p-4 overflow-y-auto border-r border-[#30363D]">
+          <h2 className="text-sm font-semibold mb-4 text-[#c9d1d9]">Media</h2>
+          <div className="mb-6">
+            <FileInput
+              onChange={handleVideoUpload}
+              disabled={ffmpegLoading}
+            />
+          </div>
           <div className="space-y-2">
             {mediaList.map(media => (
               <div
                 key={media.id}
                 draggable
                 onDragStart={() => handleMediaDragStart(media)}
-                className="p-2 rounded cursor-move bg-gray-700 hover:bg-gray-600"
+                className="flex gap-3 p-2 rounded-md cursor-move bg-[#21262D] hover:bg-[#30363D] border border-[#30363D] group"
               >
-                <div className="font-medium truncate">{media.name}</div>
-                <div className="text-xs text-gray-400">{formatTime(media.duration)}</div>
+                {/* Thumbnail */}
+                <div className="w-32 h-20 bg-black rounded overflow-hidden flex-shrink-0">
+                  {media.thumbnails[0] && (
+                    <img 
+                      src={media.thumbnails[0].url} 
+                      alt=""
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                    />
+                  )}
+                </div>
+                
+                {/* Metadata */}
+                <div className="flex flex-col justify-between flex-1 min-w-0">
+                  <div>
+                    <div className="font-medium text-sm truncate text-[#c9d1d9]">
+                      {media.name}
+                    </div>
+                    <div className="text-xs text-[#8b949e] mt-1">
+                      {Math.round(media.duration)} seconds • {formatFileSize(media.file.size)}
+                    </div>
+                  </div>
+                  
+                  {/* Thumbnails preview */}
+                  <div className="flex gap-0.5 mt-2 h-6 overflow-hidden">
+                    {media.thumbnails.slice(0, 6).map((thumb, i) => (
+                      <img
+                        key={i}
+                        src={thumb.url}
+                        alt=""
+                        className="h-full w-auto object-cover rounded-sm"
+                        draggable={false}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Preview */}
-        <div className="flex-1 p-4 flex flex-col bg-gray-950">
-          {/* Video container with fixed aspect ratio */}
-          <div className="flex-1 flex items-center justify-center p-4">
-            <div className="relative w-full max-w-4xl aspect-video bg-black rounded-lg overflow-hidden">
+        {/* Preview area */}
+        <div className="flex-1 flex flex-col min-w-0 bg-[#0D1117]">
+          {/* Video container */}
+          <div className="flex-1 flex items-center justify-center p-4 min-h-0">
+            <div className="relative w-full max-w-xl aspect-video bg-[#161B22] rounded-md overflow-hidden border border-[#30363D]">
               <video
                 ref={videoRef}
                 className="absolute inset-0 w-full h-full object-contain"
                 onEnded={() => {
-                  // Let the animation loop handle progression
                   videoRef.current?.pause();
                 }}
               />
@@ -378,9 +601,9 @@ export default function Home() {
             </div>
           </div>
           
-          {/* Project timeline controls */}
-          <div className="mt-4 flex items-center gap-4">
-            <button
+          {/* Timeline controls */}
+          <div className="shrink-0 px-4 pb-4 flex items-center gap-4">
+            <Button
               onClick={() => {
                 const newIsPlaying = !isPlaying;
                 setIsPlaying(newIsPlaying);
@@ -393,80 +616,122 @@ export default function Home() {
                   }
                 }
               }}
-              className="px-4 py-2 bg-violet-600 rounded-lg hover:bg-violet-700"
             >
               {isPlaying ? 'Pause' : 'Play'}
-            </button>
-            <div className="flex-1 h-2 bg-gray-800 rounded-full relative cursor-pointer"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const percent = (e.clientX - rect.left) / rect.width;
-                const newTime = percent * projectDuration;
-                setCurrentTime(newTime);
-                updateVideoPlayback(newTime);
-              }}
+            </Button>
+            
+            {/* Cut button */}
+            <Button
+              onClick={handleCutClip}
+              disabled={!selectedClipInfo}
+              variant="secondary"
             >
+              Cut
+            </Button>
+
+            {/* Delete button */}
+            <Button
+              onClick={handleDeleteClip}
+              disabled={!selectedClipInfo}
+              variant="destructive"
+            >
+              Delete
+            </Button>
+
+            <div className="flex-1 h-2 bg-[#21262D] rounded-full relative cursor-pointer">
               <div
-                className="absolute h-full bg-violet-600 rounded-full"
+                className="absolute h-full bg-[#58a6ff] rounded-full"
                 style={{ width: `${(currentTime / projectDuration) * 100}%` }}
               />
             </div>
-            <span className="text-sm">{formatTime(currentTime)} / {formatTime(projectDuration)}</span>
+            <span className={`text-sm ${jetbrainsMono.className}`}>
+              {formatTime(currentTime)} / {formatTime(projectDuration)}
+            </span>
           </div>
         </div>
       </div>
 
       {/* Timeline */}
-      <div className="h-64 bg-gray-800 border-t border-gray-700">
+      <div className="h-64 shrink-0 bg-[#161B22] border-t border-[#30363D]">
         <div className="h-full flex flex-col p-4">
           {/* Timeline ruler */}
           <div 
-            className="h-6 bg-gray-900 mb-2 relative cursor-pointer"
+            className="h-6 shrink-0 bg-[#0D1117] mb-2 relative cursor-pointer select-none border-b border-[#30363D]"
             onClick={handleTimelineClick}
           >
-            {Array.from({ length: Math.ceil(projectDuration / 60) }).map((_, i) => (
-              <div
-                key={i}
-                className="absolute top-0 h-full border-l border-gray-700 text-xs text-gray-500"
-                style={{ left: `${(i * 60 / projectDuration) * 100}%` }}
-              >
-                {i * 60}s
-              </div>
-            ))}
-            
-            {/* Add playhead */}
+            {/* Time markers */}
+            {Array.from({ length: projectDuration + 1 }).map((_, i) => {
+              const interval = projectDuration / 5; // Calculate the major interval
+              const isMajorMarker = i % interval < 1; // Check if this is a major marker point
+              
+              return (
+                <div
+                  key={i}
+                  className="absolute top-0 flex flex-col items-center"
+                  style={{ 
+                    left: `${(i / projectDuration) * 100}%`,
+                    transform: 'translateX(-50%)',
+                    borderLeft: isMajorMarker ? '1px solid #333333' : 'none',
+                    height: isMajorMarker ? '100%' : '0%', // Only show major markers
+                    display: isMajorMarker ? 'flex' : 'none' // Hide minor markers completely
+                  }}
+                >
+                  {isMajorMarker && (
+                    <div className={`absolute top-2 text-[10px] text-[#8b949e] ${jetbrainsMono.className}`}>
+                      {formatTime(i)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Playhead */}
             <div 
-              className="absolute top-0 h-full w-0.5 bg-red-500"
+              className={`absolute top-0 bottom-0 pointer-events-none z-10 ${isDraggingPlayhead ? 'pointer-events-auto cursor-ew-resize' : ''}`}
               style={{ 
                 left: `${(currentTime / projectDuration) * 100}%`,
-                transition: 'left 0.1s linear'
+                transform: 'translateX(-50%)'
               }}
-            />
+            >
+              {/* Diamond marker */}
+              <div 
+                className="absolute w-2.5 h-2.5 cursor-ew-resize"
+                style={{ top: '-4px', left: '-3.5px' }}
+                onMouseDown={handlePlayheadMouseDown}
+              >
+                <div className="w-full h-full bg-white transform rotate-45" />
+              </div>
+              {/* Vertical line */}
+              <div className="absolute top-0 w-[1px] h-[calc(100vh-12rem)] bg-white" />
+            </div>
           </div>
 
-          {/* Timeline tracks */}
+          {/* Timeline tracks - scrollable */}
           <div
             ref={timelineRef}
-            className="flex-1 flex flex-col gap-2 overflow-y-auto"
+            className="flex-1 flex flex-col gap-[1px] overflow-y-auto relative min-h-0"
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleTimelineDrop}
           >
             {timelineTracks.map((track, trackIndex) => (
               <div
                 key={trackIndex}
-                className="h-24 bg-gray-900 rounded relative"
+                className="h-20 bg-[#0D1117] relative border-b border-[#30363D] last:border-b-0"
               >
                 {track.map((clip, clipIndex) => {
                   const media = mediaList.find(m => m.id === clip.mediaId);
                   return (
                     <div
                       key={clip.id}
-                      draggable
-                      onDragStart={() => handleClipDragStart(trackIndex, clipIndex)}
-                      className="absolute top-0 h-full bg-violet-900 rounded cursor-move overflow-hidden"
+                      onMouseDown={(e) => handleClipMouseDown(e, trackIndex, clipIndex)}
+                      onClick={(e) => handleClipClick(e, trackIndex, clipIndex, clip)}
+                      className={`absolute top-0 h-full cursor-move overflow-hidden border transition-colors
+                        ${selectedClipInfo?.clip.id === clip.id 
+                          ? 'bg-[#1f6feb] border-[#58a6ff]' 
+                          : 'bg-[#21262D] border-[#30363D] hover:bg-[#30363D]'}`}
                       style={{
                         left: `${(clip.start / projectDuration) * 100}%`,
-                        width: `${(clip.duration / projectDuration) * 100}%`
+                        width: `${(clip.duration / projectDuration) * 100}%`,
                       }}
                     >
                       <div className="flex h-full">
@@ -475,10 +740,11 @@ export default function Home() {
                             key={i}
                             src={thumb.url}
                             alt=""
-                            className="h-full w-16 object-cover flex-shrink-0"
+                            className="h-full object-cover flex-shrink-0"
                             style={{
                               width: `${(clip.duration / media.thumbnails.length / projectDuration) * timelineRef.current?.clientWidth}px`
                             }}
+                            draggable={false}
                           />
                         ))}
                       </div>
