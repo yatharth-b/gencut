@@ -22,6 +22,7 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(0);
   const [projectDuration, setProjectDuration] = useState(300); // 5 minutes default
   const [loading, setLoading] = useState(false);
+
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const [ffmpegLoading, setFFmpegLoading] = useState(true);
   const [timelineTracks, setTimelineTracks] = useState([[]]);  // Array of tracks, each track is an array of clips
@@ -60,9 +61,6 @@ export default function Home() {
     };
     loadFFmpeg();
   }, []);
-
-
-
 
   const formatTime = (time) => {
     const minutes = Math.floor(time / 60);
@@ -263,7 +261,7 @@ export default function Home() {
       updateVideoPlayback(newTime);
     }
   };
-
+  
   const handleTimelineMouseUp = () => {
     setIsDraggingPlayhead(false);
     setIsDraggingStartCursor(false);
