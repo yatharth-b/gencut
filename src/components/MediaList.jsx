@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useRef } from "react";
-import { fetchFile } from '@ffmpeg/ffmpeg';
+import { fetchFile } from "@ffmpeg/ffmpeg";
 
 const FileInput = ({ onChange, disabled }) => {
   const inputRef = useRef(null);
@@ -34,7 +34,7 @@ export default function MediaList({
   ffmpegLoaded,
   setLoading,
   setMediaList,
-  ffmpeg
+  ffmpeg,
 }) {
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 B";
@@ -63,28 +63,39 @@ export default function MediaList({
         name: file.name,
         duration: 0,
         thumbnails: [],
+        loading: true,
       };
 
+      const formData = new FormData();
+      formData.append("video", file);
       // Get video duration
       const video = document.createElement("video");
       video.src = url;
       await new Promise((resolve, reject) => {
         video.onloadedmetadata = () => {
           newMedia.duration = video.duration;
+          formData.append("duration", video.duration.toString());
           resolve();
         };
         video.onerror = reject;
       });
 
-      // Add to media list first
       setMediaList((prev) => [...prev, newMedia]);
+
+      const response = await fetch("http://localhost:5050/api/preprocess", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      console.log('Preprocessed data:', data);
 
       // Generate thumbnails
       const thumbnails = await generateThumbnails(file, newMedia.duration);
 
       // Update media with thumbnails
       setMediaList((prev) =>
-        prev.map((m) => (m.id === newMedia.id ? { ...m, thumbnails } : m))
+        prev.map((m) => (m.id === newMedia.id ? { ...m, thumbnails, loading: false } : m))
       );
     } catch (error) {
       console.error("Error uploading video:", error);
@@ -166,13 +177,19 @@ export default function MediaList({
           >
             {/* Thumbnail */}
             <div className="w-32 h-20 bg-black rounded overflow-hidden flex-shrink-0">
-              {media.thumbnails[0] && (
-                <img
-                  src={media.thumbnails[0].url}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  draggable={false}
-                />
+              {media.loading ? (
+                <div className="flex items-center justify-center w-full h-full">
+                  <span className="text-white">Loading...</span> {/* Display loading text */}
+                </div>
+              ) : (
+                media.thumbnails[0] && (
+                  <img
+                    src={media.thumbnails[0].url}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    draggable={false}
+                  />
+                )
               )}
             </div>
 
@@ -190,7 +207,7 @@ export default function MediaList({
 
               {/* Thumbnails preview */}
               <div className="flex gap-0.5 mt-2 h-6 overflow-hidden">
-                {media.thumbnails.slice(0, 6).map((thumb, i) => (
+                {media.loading ? null : media.thumbnails.slice(0, 6).map((thumb, i) => (
                   <img
                     key={i}
                     src={thumb.url}

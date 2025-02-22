@@ -115,13 +115,14 @@ def preprocess_image(video_duration, video_file):
             _, buffer = cv2.imencode('.jpg', frame)
             base64_frame = base64.b64encode(buffer).decode('utf-8')
             frames.append(gpt_frame_desc(base64_frame))
+
         
-        attrs.append({
-            "rgb_level": utils.get_rgb_levels(frame),
-            "saturation": utils.get_saturation(frame),
-            "contrast": utils.get_contrast(frame),
-            "brightness": utils.get_brightness(frame)
-        })
+            attrs.append({
+                "rgb_level": utils.get_rgb_levels(frame),
+                "saturation": utils.get_saturation(frame),
+                "contrast": utils.get_contrast(frame),
+                "brightness": utils.get_brightness(frame)
+            })
         
         frame_count += 1
 
@@ -133,14 +134,17 @@ def preprocess_image(video_duration, video_file):
     return frames, attrs
 
 def get_transcript(video_file):
+    print("in getting transcript")
     video_temp_dir = tempfile.mkdtemp()
-    video_path = os.path.join(video_temp_dir, secure_filename(video_file.name))
+    video_path = os.path.join(video_temp_dir, f"{secure_filename(video_file.name)}")
     video_file.save(video_path)
-
+    print(f"video path: {video_path}")
+    print('calling moviepi')
     audio = VideoFileClip(video_path).audio
 
     audio_temp_dir = tempfile.mkdtemp()
     audio_path = os.path.join(audio_temp_dir, secure_filename(f'audio.wav'))
+    print("audiopath")
     audio.write_audiofile(audio_path)
 
     audio_file = open(audio_path, "rb")
@@ -185,7 +189,7 @@ def preprocess():
         return jsonify({
             'image_description': image_desc,
             'image_attr': attrs,
-            'transcription': transcription
+            'transcription': transcript
         })
 
     except Exception as e:
