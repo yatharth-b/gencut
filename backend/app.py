@@ -112,7 +112,6 @@ def preprocess_image(video_duration, video_file):
 
     with ThreadPoolExecutor() as executor:
         while cap.isOpened():
-            print("in while loop")
             ret, frame = cap.read()
             if not ret:
                 break
@@ -217,7 +216,7 @@ def chat():
         print(messages)
         clip_contexts = data.get('clipContexts', [])
 
-        print(clip_contexts)
+        # print(clip_contexts)
         
         formatted_messages = []
         for msg in messages:

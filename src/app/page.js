@@ -297,11 +297,7 @@ export default function Home() {
     setInputMessage('');
     setIsChatLoading(true);
 
-    // Add user message to chat
-    setMessages(prev => [...prev, { 
-      role: 'user', 
-      content: userMessage
-    }]);
+    let prevMessages = [...messages];
 
     try {
       // Get clip contexts
@@ -313,10 +309,19 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages:  messages,
+          messages:  [...messages, { 
+            role: 'user', 
+            content: userMessage
+          }],
           clipContexts: clipContexts
         }),
       });
+
+    // Add user message to chat
+    setMessages(prev => [...prev, { 
+      role: 'user', 
+      content: userMessage
+    }]);
 
       const data = await response.json();
 
