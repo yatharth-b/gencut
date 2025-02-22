@@ -23,7 +23,7 @@ export default function Home() {
   const videoRef = useRef(null);
   const chatContainerRef = useRef(null);
 
-  // Add this state for frames
+  // Add state for frames
   const [frames, setFrames] = useState([]);
 
   // Load FFmpeg
@@ -53,7 +53,7 @@ export default function Home() {
     }
   }, [messages]);
 
-  // Add the frame extraction function
+  // Add frame extraction function
   const extractFrames = async (videoFile) => {
     if (!ffmpeg) return [];
     
@@ -66,7 +66,6 @@ export default function Home() {
         '-i', 'input.mp4',
         '-vf', 'fps=1',
         '-f', 'image2',
-        '-frame_pts', '1',
         'frame_%d.jpg'
       ]);
       
@@ -78,12 +77,14 @@ export default function Home() {
           const frameData = await ffmpeg.readFile(`frame_${frameIndex}.jpg`);
           const base64Frame = Buffer.from(frameData).toString('base64');
           frames.push({
-            time: frameIndex - 1,
-            data: base64Frame
+            type: "image_url",
+            image_url: {
+              url: `data:image/jpeg;base64,${base64Frame}`
+            }
           });
           frameIndex++;
         } catch {
-          break; // No more frames
+          break;
         }
       }
       
@@ -102,25 +103,7 @@ export default function Home() {
     }
   };
 
-  // Modify handleVideoUpload
-  const handleVideoUpload = async (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setVideoFile(file);
-      const url = URL.createObjectURL(file);
-      setVideoUrl(url);
-      setTrimmedVideoUrl(null);
-      setStartTime(0);
-      setEndTime(0);
-      setCurrentTime(0);
-      
-      // Extract frames
-      const extractedFrames = await extractFrames(file);
-      setFrames(extractedFrames);
-    }
-  };
-
-  // Modify handleChatSubmit
+  // Handle chat submission
   const handleChatSubmit = async (e) => {
     e.preventDefault();
     if (!inputMessage.trim()) return;
@@ -131,16 +114,15 @@ export default function Home() {
     setIsChatLoading(true);
 
     try {
+      // Create form data with video and message
+      const formData = new FormData();
+      formData.append('message', userMessage);
+      formData.append('video', videoFile);
+      formData.append('duration', duration.toString());
+
       const response = await fetch('http://localhost:5050/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: userMessage,
-          videoDuration: duration,
-          frames: frames.slice(0, 10) // Send first 10 frames to avoid payload size issues
-        }),
+        body: formData, // Send as FormData instead of JSON
       });
 
       const data = await response.json();
@@ -148,7 +130,7 @@ export default function Home() {
       // Always add assistant's response to chat history
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: data.message || 'I understood your request.' 
+        content: data.message 
       }]);
 
       // Handle function call if present
@@ -170,11 +152,36 @@ export default function Home() {
     }
   };
 
+  // Modify handleVideoUpload
+  const handleVideoUpload = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setVideoFile(file);
+      const url = URL.createObjectURL(file);
+      setVideoUrl(url);
+      setTrimmedVideoUrl(null);
+      setStartTime(0);
+      setEndTime(0);
+      setCurrentTime(0);
+      
+      // Extract frames
+      const extractedFrames = await extractFrames(file);
+      setFrames(extractedFrames);
+    }
+  };
+
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setEndTime(videoRef.current.duration);
     }
+  };
+
+  const formatTime = (time) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    const milliseconds = Math.floor((time % 1) * 100);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(2, '0')}`;
   };
 
   const handleTimeUpdate = () => {

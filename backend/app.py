@@ -4,7 +4,11 @@ import logging
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
+import cv2
+import numpy as np
 import base64
+from werkzeug.utils import secure_filename
+import tempfile
 
 # Load environment variables
 load_dotenv()
@@ -54,47 +58,102 @@ AVAILABLE_FUNCTIONS = {
     }
 }
 
+# Add conversation history storage
+conversation_history = []
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
-        print("Received chat request")
-        data = request.get_json()
-        user_message = data.get('message')
-        video_duration = data.get('videoDuration', 0)
-        frames = data.get('frames', [])
+        user_message = request.form.get('message')
+        video_duration = float(request.form.get('duration', 0))
+        video_file = request.files.get('video')
+
+        if not video_file:
+            return jsonify({'error': 'No video file provided'}), 400
+
+        # Save video to temporary file
+        temp_dir = tempfile.mkdtemp()
+        video_path = os.path.join(temp_dir, secure_filename(video_file.filename))
+        video_file.save(video_path)
+
+        # Extract frames using OpenCV
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frames = []
+        frame_count = 0
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # Extract one frame per second
+            if frame_count % int(fps) == 0:
+                # Convert frame to JPEG
+                _, buffer = cv2.imencode('.jpg', frame)
+                base64_frame = base64.b64encode(buffer).decode('utf-8')
+                print(base64_frame)
+                
+                # Add frame in GPT-4 Vision format
+                frames.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_frame}"
+                    }
+                })
+            
+            frame_count += 1
+            
+            # Limit to first 10 seconds of frames
+            if frame_count >= fps * 10:
+                break
+
+        cap.release()
         
-        # Create frame descriptions for context
-        frame_descriptions = []
-        for frame in frames:
-            frame_descriptions.append(f"Frame at {frame['time']} seconds: <image>{frame['data']}</image>")
-        
-        frame_context = "\n".join(frame_descriptions)
-        
-        system_message = f"""You are a helpful assistant that helps users trim videos. 
-        The current video is {video_duration} seconds long.
-        I have analyzed several frames from the video:
-        {frame_context}
-        
-        Use this visual information to help understand the video content and provide better trimming suggestions."""
+        # Cleanup
+        os.remove(video_path)
+        os.rmdir(temp_dir)
+
+        # Prepare message content
+        content = [
+            {
+                "type": "text",
+                "text": f"The video is {video_duration} seconds long. {user_message}"
+            }
+        ]
+        content.extend(frames)
+
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant that helps users trim videos or answer questions based on the video."
+            },
+            {
+                "role": "user",
+                "content": content
+            }
+        ]
 
         response = client.chat.completions.create(
-            model="gpt-4-vision-preview",  # Use vision model to process images
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_message
-                },
-                {
-                    "role": "user",
-                    "content": user_message
-                }
-            ],
+            model="gpt-4o-mini",
+            messages=messages,
             functions=[AVAILABLE_FUNCTIONS["trim_video"]],
             function_call="auto",
             max_tokens=500
         )
 
         assistant_message = response.choices[0].message
+        print(assistant_message)
+        # Update conversation history
+        # conversation_history.append({
+        #     "role": "user",
+        #     "content": user_message  # Store text only for history
+        # })
+        # conversation_history.append({
+        #     "role": "assistant",
+        #     "content": assistant_message.content
+        # })
+
         print("Assistant message:", assistant_message)
 
         # If there's a function call
