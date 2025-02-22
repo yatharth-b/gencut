@@ -14,8 +14,17 @@ export default function Home() {
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
   const [ffmpeg, setFFmpeg] = useState(null);
+  
+  // Chat states
+  const [messages, setMessages] = useState([]);
+  const [inputMessage, setInputMessage] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  
   const videoRef = useRef(null);
-  const trimmedVideoRef = useRef(null);
+  const chatContainerRef = useRef(null);
+
+  // Add this state for frames
+  const [frames, setFrames] = useState([]);
 
   // Load FFmpeg
   useEffect(() => {
@@ -37,16 +46,127 @@ export default function Home() {
     loadFFmpeg();
   }, []);
 
-  const handleVideoUpload = (event) => {
+  // Scroll to bottom of chat when new messages arrive
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  // Add the frame extraction function
+  const extractFrames = async (videoFile) => {
+    if (!ffmpeg) return [];
+    
+    try {
+      setLoading(true);
+      await ffmpeg.writeFile('input.mp4', await fetchFile(videoFile));
+      
+      // Extract one frame per second
+      await ffmpeg.exec([
+        '-i', 'input.mp4',
+        '-vf', 'fps=1',
+        '-f', 'image2',
+        '-frame_pts', '1',
+        'frame_%d.jpg'
+      ]);
+      
+      const frames = [];
+      let frameIndex = 1;
+      
+      while (true) {
+        try {
+          const frameData = await ffmpeg.readFile(`frame_${frameIndex}.jpg`);
+          const base64Frame = Buffer.from(frameData).toString('base64');
+          frames.push({
+            time: frameIndex - 1,
+            data: base64Frame
+          });
+          frameIndex++;
+        } catch {
+          break; // No more frames
+        }
+      }
+      
+      // Cleanup
+      await ffmpeg.deleteFile('input.mp4');
+      for (let i = 1; i < frameIndex; i++) {
+        await ffmpeg.deleteFile(`frame_${i}.jpg`);
+      }
+      
+      return frames;
+    } catch (error) {
+      console.error('Error extracting frames:', error);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Modify handleVideoUpload
+  const handleVideoUpload = async (event) => {
     const file = event.target.files[0];
     if (file) {
       setVideoFile(file);
       const url = URL.createObjectURL(file);
       setVideoUrl(url);
-      setTrimmedVideoUrl(null); // Reset trimmed video when new video is uploaded
+      setTrimmedVideoUrl(null);
       setStartTime(0);
       setEndTime(0);
       setCurrentTime(0);
+      
+      // Extract frames
+      const extractedFrames = await extractFrames(file);
+      setFrames(extractedFrames);
+    }
+  };
+
+  // Modify handleChatSubmit
+  const handleChatSubmit = async (e) => {
+    e.preventDefault();
+    if (!inputMessage.trim()) return;
+
+    const userMessage = inputMessage.trim();
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setInputMessage('');
+    setIsChatLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:5050/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          videoDuration: duration,
+          frames: frames.slice(0, 10) // Send first 10 frames to avoid payload size issues
+        }),
+      });
+
+      const data = await response.json();
+
+      // Always add assistant's response to chat history
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: data.message || 'I understood your request.' 
+      }]);
+
+      // Handle function call if present
+      if (data.type === 'function_call' && data.result.action === 'trim_video') {
+        const { start_time, end_time } = data.result.parameters;
+        setStartTime(start_time);
+        setEndTime(end_time);
+        await handleTrimVideo(start_time, end_time);
+      }
+
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: 'Sorry, I encountered an error processing your request.' 
+      }]);
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
@@ -55,13 +175,6 @@ export default function Home() {
       setDuration(videoRef.current.duration);
       setEndTime(videoRef.current.duration);
     }
-  };
-
-  const formatTime = (time) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    const milliseconds = Math.floor((time % 1) * 100);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(2, '0')}`;
   };
 
   const handleTimeUpdate = () => {
@@ -82,8 +195,8 @@ export default function Home() {
     }
   };
 
-  const handleTrimVideo = async () => {
-    if (!videoFile || startTime === null || endTime === null || !ffmpeg) return;
+  const handleTrimVideo = async (start = startTime, end = endTime) => {
+    if (!videoFile || !ffmpeg) return;
     
     try {
       setLoading(true);
@@ -92,22 +205,18 @@ export default function Home() {
       
       await ffmpeg.exec([
         '-i', 'input.mp4',
-        '-ss', startTime.toString(),
-        '-to', endTime.toString(),
+        '-ss', start.toString(),
+        '-to', end.toString(),
         '-c', 'copy',
         'output.mp4'
       ]);
       
       const data = await ffmpeg.readFile('output.mp4');
-      
-      // Create URL for trimmed video preview
       const outputUrl = URL.createObjectURL(
         new Blob([data.buffer], { type: 'video/mp4' })
       );
       
       setTrimmedVideoUrl(outputUrl);
-      
-      // Cleanup FFmpeg files
       await ffmpeg.deleteFile('input.mp4');
       await ffmpeg.deleteFile('output.mp4');
       
@@ -261,7 +370,7 @@ export default function Home() {
               </div>
               
               <button
-                onClick={handleTrimVideo}
+                onClick={() => handleTrimVideo(startTime, endTime)}
                 disabled={!videoFile || loading || !ffmpeg}
                 className="w-full bg-violet-600 text-white py-2 px-4 rounded-lg hover:bg-violet-700 disabled:opacity-50"
               >
@@ -275,7 +384,7 @@ export default function Home() {
             <div className="space-y-4 bg-white p-6 rounded-lg shadow-sm">
               <h2 className="font-semibold">Trimmed Video Preview</h2>
               <video
-                ref={trimmedVideoRef}
+                ref={videoRef}
                 src={trimmedVideoUrl}
                 controls
                 className="w-full rounded-lg"
@@ -293,6 +402,50 @@ export default function Home() {
               </button>
             </div>
           )}
+        </div>
+
+        {/* Chat Interface */}
+        <div className="w-full bg-white rounded-lg shadow-sm p-4 space-y-4">
+          <div 
+            ref={chatContainerRef}
+            className="h-[300px] overflow-y-auto space-y-4 mb-4 p-4 border rounded bg-white text-black"
+          >
+            {messages.map((msg, index) => (
+              <div
+                key={index}
+                className={`p-3 rounded-lg ${
+                  msg.role === 'user' 
+                    ? 'bg-violet-100 ml-auto max-w-[80%]' 
+                    : 'bg-gray-100 mr-auto max-w-[80%]'
+                }`}
+              >
+                {msg.content}
+              </div>
+            ))}
+            {isChatLoading && (
+              <div className="bg-gray-100 rounded-lg p-3 mr-auto max-w-[80%]">
+                Thinking...
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleChatSubmit} className="flex gap-2">
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              placeholder="Ask me to trim your video..."
+              className="flex-1 p-2 border rounded text-black"
+              disabled={isChatLoading || !videoUrl}
+            />
+            <button
+              type="submit"
+              disabled={isChatLoading || !videoUrl}
+              className="bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 disabled:opacity-50"
+            >
+              Send
+            </button>
+          </form>
         </div>
       </main>
       <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
