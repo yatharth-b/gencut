@@ -1,8 +1,14 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
+
 
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
+
+const ffmpeg = createFFmpeg({
+    corePath: "https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js",
+});
 
 export default function VideoPlayer({
   videoRef,
@@ -25,7 +31,7 @@ export default function VideoPlayer({
   ffmpeg,
   fetchFile
 }) {
-  const formatTime = (time) => {
+    const formatTime = (time) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     const milliseconds = Math.floor((time % 1) * 100);

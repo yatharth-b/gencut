@@ -36,9 +36,23 @@ AVAILABLE_TASK_FUNCTIONS = {
     }
 }
 AVAILABLE_FUNCTIONS = {
+    'deleteClip': {
+        "name": "deleteClip",
+        "description": "Delete a clip given it's clipId",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to move"
+                }
+            },
+            "required": ["clipId"]
+        }
+    },
     "trim_video": {
         "name": "trim_video",
-        "description": "Trim a video between specified start and end times. Interpret each frame as a second, and give the start time and end time in seconds. Make sure the end time is less than the duration of the video.",
+        "description": "Trim a video between specified start and end times . Interpret each frame as a second, and give the start time and end time in seconds. Make sure the end time is less than the duration of the video.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -112,18 +126,80 @@ AVAILABLE_FUNCTIONS = {
             "required": ["clipId", "start"]
         }
     },
-    'deleteClip': {
-        "name": "deleteClip",
-        "description": "Delete a clip given it's clipId",
+    "convertToGrayscale": {
+        "name": "convertToGrayscale",
+        "description": "Converts a video clip to grayscale",
         "parameters": {
             "type": "object",
             "properties": {
                 "clipId": {
                     "type": "string",
-                    "description": "ID of the clip to move"
+                    "description": "ID of the clip to change to grayscale"
                 }
             },
             "required": ["clipId"]
+        }
+    },
+    "applyColorGrading": {
+        "name": "applyColorGrading",
+        "description": "Applies the suggested color grading to a clip based on the contrast, gamma, and saturation values",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip whose color grading needs to be modified"
+                },
+                "contrast": {
+                    "type": "number",
+                    "description": "Specifies what level of contrast to add to the clip"
+                },
+                "gamma" : {
+                    "type": "number",
+                    "description": "Specifies gamma level for the clip"
+                },
+                "saturation" : {
+                    "type": "number",
+                    "description": "Specifies saturation levels for the clip"
+                }
+            },
+            "required": ["clipId", "contrast", "gamma", "saturation"]
+        }
+    },
+    "adjustSaturation": {
+        "name": "adjustSaturation",
+        "description": "Applies the suggested saturation level to a clip",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip whose saturation levels need to be modified"
+                },
+                "saturation" : {
+                    "type": "number",
+                    "description": "Specifies saturation levels for the clip"
+                }
+            },
+            "required": ["clipId", "saturation"]
+        }
+    },
+    "addBlurEffect": {
+        "name": "addBlurEffect",
+        "description": "Blurs the selected clip by the specified level of blur strength",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip that needs to be blurred"
+                },
+                "blurStrength" : {
+                    "type": "number",
+                    "description": "Specifies blur strength for the clip"
+                }
+            },
+            "required": ["clipId", "blurStrength"]
         }
     }
 }
