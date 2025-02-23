@@ -143,6 +143,7 @@ def gpt_frame_desc(base64_image):
 
     response = client.chat.completions.create(
         model="gpt-4o",
+        model="gpt-4o",
         messages=messages,
         max_tokens=500
     )
@@ -265,8 +266,10 @@ def chat():
         data = request.get_json()
         messages = data.get('messages', [])
         # print(messages)
+        # print(messages)
         clip_contexts = data.get('clipContexts', [])
 
+        # print(clip_contexts)
         # print(clip_contexts)
         
         formatted_messages = []

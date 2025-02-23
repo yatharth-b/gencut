@@ -1,5 +1,7 @@
 import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
 import { toBlobURL } from '@ffmpeg/util';
+import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
+import { toBlobURL } from '@ffmpeg/util';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB limit
 
@@ -13,11 +15,6 @@ const ffmpeg = createFFmpeg({
 const loadFFmpeg = async () => {
     if (!ffmpeg.isLoaded()) {
         try {
-            // Set up logger before loading
-            // ffmpeg.setLogger(({ type, message }) => {
-            //     console.log(`FFmpeg [${type}]: ${message}`);
-            // });
-            
             await ffmpeg.load();
             console.log('FFmpeg is ready!');
         } catch (error) {
@@ -29,11 +26,17 @@ const loadFFmpeg = async () => {
 };
 
 const writeInputFile = async (input) => {
+const writeInputFile = async (input) => {
     try {
         const data = await fetchFile(input);
         if (data.length > MAX_FILE_SIZE) {
             throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+        const data = await fetchFile(input);
+        if (data.length > MAX_FILE_SIZE) {
+            throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
         }
+        ffmpeg.FS('writeFile', 'input.mp4', data);
+        console.log('File written successfully');
         ffmpeg.FS('writeFile', 'input.mp4', data);
         console.log('File written successfully');
     } catch (error) {
@@ -176,7 +179,6 @@ export const convertToGrayscale = async (input) => {
         'output.mp4'
     ]);
 };
-
 
 // Example usage with error handling
 export const runExamples = async () => {
