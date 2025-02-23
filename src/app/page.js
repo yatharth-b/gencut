@@ -6,7 +6,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
-import { adjustBrightness } from "./utils";
+import { adjustBrightness, trimVideo } from "./utils";
 
 
 
@@ -419,42 +419,27 @@ export default function Home() {
     if (!inputMessage.trim()) return;
 
     const userMessage = inputMessage.trim();
-    setInputMessage("");
+    setInputMessage('');
     setIsChatLoading(true);
 
     let prevMessages = [...messages];
-
-    // Add user message to chat
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: userMessage,
-      },
-    ]);
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
 
     try {
-      // Get clip contexts
-      const clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
-      const response = await fetch("http://localhost:5050/api/chat", {
-        method: "POST",
+      const clipContexts = clipsInRange.map(clip => JSON.stringify(clip));
+      const response = await fetch('http://localhost:5050/api/chat', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [
-            ...prevMessages,
-            {
-              role: "user",
-              content: userMessage,
-            },
-          ],
+          messages: [...prevMessages, { role: 'user', content: userMessage }],
           clipContexts: clipContexts,
         }),
       });
 
       const data = await response.json();
-      console.log("chatgpt response:", data);
+      console.log('chatgpt response:', data);
 
       // Add assistant's response to chat
       setMessages((prev) => [
@@ -493,7 +478,24 @@ export default function Home() {
           ));
         }
       }
-
+      else if (data.function_name === "trim_video") {
+        const functionArgs = JSON.parse(data.function_args);
+        const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+        const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+        if (!selectedMedia) {
+          console.error('Media not found for clip');
+          return;
+        }
+        const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
+        // Update the clip to point to the new media
+        setTimelineTracks(prev => prev.map(track => 
+          track.map(clip => 
+            clip.id === functionArgs.clipId 
+              ? {...clip, mediaId: newMediaId}
+              : clip
+          )
+        ));
+      }
       // If it's a function call to rearrange the clips
       if (data.function_name === "moveClip") {
         const functionArgs = JSON.parse(data.function_args);

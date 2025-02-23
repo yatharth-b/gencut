@@ -28,24 +28,24 @@ CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-# Define the available functions
-def trim_video(start_time: float, end_time: float) -> dict:
-    """
-    Function to trim a video between specified start and end times.
-    """
-    return {
-        "action": "trim_video",
-        "parameters": {
-            "start_time": start_time,
-            "end_time": end_time
-        }
-    }
+# # Define the available functions
+# def trim_video(start_time: float, end_time: float) -> dict:
+#     """
+#     Function to trim a video between specified start and end times.
+#     """
+#     return {
+#         "action": "trim_video",
+#         "parameters": {
+#             "start_time": start_time,
+#             "end_time": end_time
+#         }
+#     }
 
 # Define the available functions for OpenAI
 AVAILABLE_FUNCTIONS = {
     "trim_video": {
         "name": "trim_video",
-        "description": "Trim a video between specified start and end times",
+        "description": "Trim a video between specified start and end times. Interpret each frame as a second, and give the start time and end time in seconds. Make sure the end time is less than the duration of the video.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -56,9 +56,13 @@ AVAILABLE_FUNCTIONS = {
                 "end_time": {
                     "type": "number",
                     "description": "End time in seconds"
+                },
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to trim"
                 }
             },
-            "required": ["start_time", "end_time"]
+            "required": ["start_time", "end_time", "clipId"]
         }
     },
     "cutClip": {
