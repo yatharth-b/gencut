@@ -694,6 +694,7 @@ export default function Home() {
             setTimelineTracks={setTimelineTracks}
             setSelectedClipInfo={setSelectedClipInfo}
             cutClip={cutClip}
+            ffmpegLoaded={ffmpegLoaded}
           />
 
           {/* Chat panel */}
