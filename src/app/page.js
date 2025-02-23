@@ -775,6 +775,7 @@ export default function Home() {
             setCurrentTime={setCurrentTime}
             selectedClipInfo={selectedClipInfo}
             loading={loading}
+            setLoading={setLoading}
             timelineTracks={timelineTracks}
             setTimelineTracks={setTimelineTracks}
             setSelectedClipInfo={setSelectedClipInfo}
