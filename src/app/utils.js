@@ -15,6 +15,11 @@ const ffmpeg = createFFmpeg({
 const loadFFmpeg = async () => {
     if (!ffmpeg.isLoaded()) {
         try {
+            // Set up logger before loading
+            // ffmpeg.setLogger(({ type, message }) => {
+            //     console.log(`FFmpeg [${type}]: ${message}`);
+            // });
+            
             await ffmpeg.load();
             console.log('FFmpeg is ready!');
         } catch (error) {
@@ -179,6 +184,7 @@ export const convertToGrayscale = async (input) => {
         'output.mp4'
     ]);
 };
+
 
 // Example usage with error handling
 export const runExamples = async () => {
