@@ -8,9 +8,6 @@ import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
 import { adjustBrightness, trimVideo } from "./utils";
 
-
-
-
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
 
@@ -21,6 +18,9 @@ const ffmpeg = createFFmpeg({
 });
 
 export default function Home() {
+  const [socket, setSocket] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+
   const [mediaList, setMediaList] = useState([]); // List of all uploaded videos
   const [selectedMedia, setSelectedMedia] = useState(null); // Currently selected video
   const [currentTime, setCurrentTime] = useState(0);
@@ -29,7 +29,7 @@ export default function Home() {
 
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const [ffmpegLoading, setFFmpegLoading] = useState(true);
-  const [timelineTracks, setTimelineTracks] = useState([[]]); // Single track as an array of clips
+  const [timelineTracks, setTimelineTracks] = useState([[]]); // Single track as a state
   const [draggingMedia, setDraggingMedia] = useState(null);
   const [draggingClip, setDraggingClip] = useState(null);
   const [thumbnails, setThumbnails] = useState([]); // Store video thumbnails
@@ -106,16 +106,23 @@ export default function Home() {
       };
 
       // Add the new clip to the single track
-      setTimelineTracks((prev) => [[...prev[0], newClip].sort((a, b) => a.start - b.start)]);
+      setTimelineTracks((prev) => [
+        [...prev[0], newClip].sort((a, b) => a.start - b.start),
+      ]);
     } else if (draggingClip) {
       // Move existing clip
       const { clip } = draggingClip;
+      const timelineRect = timelineRef.current.getBoundingClientRect();
+      const dropPosition =
+        ((e.clientX - timelineRect.left) / timelineRect.width) *
+        projectDuration;
       const newStart = Math.max(0, dropPosition);
 
       setTimelineTracks((prev) => {
-        const updatedTrack = prev[0].filter((c) => c.id !== clip.id);
-        const updatedClip = { ...clip, start: newStart };
-        return [[...updatedTrack, updatedClip].sort((a, b) => a.start - b.start)];
+        const updatedTrack = prev[0].map((c) =>
+          c.id === clip.id ? { ...clip, start: newStart } : c
+        );
+        return [updatedTrack.sort((a, b) => a.start - b.start)];
       });
     }
 
@@ -128,9 +135,9 @@ export default function Home() {
 
     const { clip } = selectedClipInfo;
 
-    setTimelineTracks((prev) =>
-      [prev[0].filter((c) => c.id !== clip.id)] // Filter out the deleted clip
-    );
+    setTimelineTracks((prev) => [
+      prev[0].filter((c) => c.id !== clip.id), // Filter out the deleted clip
+    ]);
 
     setSelectedClipInfo(null); // Clear the selected clip info
   };
@@ -179,18 +186,13 @@ export default function Home() {
       )
     );
 
-    setTimelineTracks((prev) =>
-      prev.map((track, i) => {
-        if (i === draggingClip.trackIndex) {
-          return track.map((clip) =>
-            clip.id === draggingClip.clip.id
-              ? { ...clip, start: newStart }
-              : clip
-          );
-        }
-        return track;
-      })
-    );
+    // Update the timelineTracks state directly
+    setTimelineTracks((prev) => {
+      const updatedTrack = prev[0].map((clip) =>
+        clip.id === draggingClip.clip.id ? { ...clip, start: newStart } : clip
+      );
+      return [updatedTrack];
+    });
   };
 
   const handleMouseUp = () => {
@@ -324,34 +326,35 @@ export default function Home() {
     console.log(timelineTracks)
     const clipToCut = timelineTracks[0].find(c => c.id === clipId);
     if (!clipToCut) {
-        console.error("Clip not found with ID:", clipId);
-        return;
+      console.error("Clip not found with ID:", clipId);
+      return;
     }
-    console.log("cutClip", clipToCut, cutPoint);
 
     // Calculate the first half
     const firstHalf = {
-        id: Date.now().toString(),
-        mediaId: clipToCut.mediaId,
-        start: clipToCut.start,
-        duration: cutPoint,
-        offset: clipToCut.offset,
-        // Filter attributes for the first half
-        imageDescriptions: clipToCut.imageDescriptions.slice(0, Math.ceil(cutPoint)),
-        imageAttributes: clipToCut.imageAttributes.slice(0, Math.ceil(cutPoint)),
-        transcription: clipToCut.transcription.slice(0, Math.ceil(cutPoint)),
+      id: Date.now().toString(),
+      mediaId: clipToCut.mediaId,
+      start: clipToCut.start,
+      duration: cutPoint,
+      offset: clipToCut.offset,
+      imageDescriptions: clipToCut.imageDescriptions.slice(
+        0,
+        Math.ceil(cutPoint)
+      ),
+      imageAttributes: clipToCut.imageAttributes.slice(0, Math.ceil(cutPoint)),
+      transcription: clipToCut.transcription.slice(0, Math.ceil(cutPoint)),
     };
     
     const secondHalf = {
-        id: (Date.now() + 1).toString(),
-        mediaId: clipToCut.mediaId,
-        start: clipToCut.start + cutPoint,
-        duration: clipToCut.duration - cutPoint,
-        offset: clipToCut.offset + cutPoint,
-        // Filter attributes for the second half
-        imageDescriptions: clipToCut.imageDescriptions.slice(Math.ceil(cutPoint)),
-        imageAttributes: clipToCut.imageAttributes.slice(Math.ceil(cutPoint)),
-        transcription: clipToCut.transcription.slice(Math.ceil(cutPoint)),
+      id: (Date.now() + 1).toString(),
+      mediaId: clipToCut.mediaId,
+      start: clipToCut.start + cutPoint,
+      duration: clipToCut.duration - cutPoint,
+      offset: clipToCut.offset + cutPoint,
+      // Filter attributes for the second half
+      imageDescriptions: clipToCut.imageDescriptions.slice(Math.ceil(cutPoint)),
+      imageAttributes: clipToCut.imageAttributes.slice(Math.ceil(cutPoint)),
+      transcription: clipToCut.transcription.slice(Math.ceil(cutPoint)),
     };
 
     // Create copy and update secondHalf
@@ -397,17 +400,16 @@ export default function Home() {
 
     // Update the single track directly
     setTimelineTracks((prev) => {
-      const updatedTrack = prev[0].map((c) => {
-        if (c.id === clipToMove.id) {
+      const updatedTrack = prev[0].flatMap((c) => {
+        if (c.id === clipToCut.id) {
           // Replace the cut clip with the two new pieces
-          return newClip;
+          return [firstHalf, secondHalf];
         }
         return c;
       });
-
-      return [updatedTrack]; // Return a new array with the updated track
+      return [updatedTrack];
     });
-  }
+  };
 
   const handleClipClick = (e, trackIndex, clipIndex, clip) => {
     e.stopPropagation(); // Prevent timeline click
@@ -426,36 +428,67 @@ export default function Home() {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
 
     try {
-      const clipContexts = clipsInRange.map(clip => JSON.stringify(clip));
-      const response = await fetch('http://localhost:5050/api/chat', {
-        method: 'POST',
+
+      let clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
+
+      let response = await fetch("http://localhost:5050/api/chatv2", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json", // Ensure the server knows we're sending JSON
         },
         body: JSON.stringify({
           messages: [...prevMessages, { role: 'user', content: userMessage }],
           clipContexts: clipContexts,
+          type: "new_chat",
         }),
       });
 
-      const data = await response.json();
-      console.log('chatgpt response:', data);
 
-      // Add assistant's response to chat
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: data.message,
-          type: data.type, // 'message' or 'function_call'
-        },
-      ]);
+      let responseData = await response.json(); // Decode the response
+      console.log('first response')
+      console.log(responseData)
+      let task_id = responseData.task_id;
 
-      // If it's a function call to cut a clip
-      if (data.function_name === "cutClip") {
-        const functionArgs = JSON.parse(data.function_args);
-        console.log(functionArgs)
-        cutClip(functionArgs.clipId, functionArgs.cutPoint);
+
+      while (responseData.type == "function_call") {
+        if (responseData.function_name === "cutClip") {
+          const functionArgs = JSON.parse(responseData.function_args);
+          cutClip(functionArgs.clipId, functionArgs.cutPoint);
+        }
+
+        if (responseData.function_name === "moveClip") {
+          const functionArgs = JSON.parse(responseData.function_args);
+          moveClip(functionArgs.clipId, functionArgs.start);
+        }
+
+        if (responseData.function_name === "deleteClip") {
+          const functionArgs = JSON.parse(responseData.function_args);
+          moveClip(functionArgs.clipId);
+        }
+
+        clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
+
+        response = await fetch("http://localhost:5050/api/chatv2", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json", // Ensure the server knows we're sending JSON
+          },
+          body: JSON.stringify({
+            messages: [
+              ...prevMessages,
+              {
+                role: "user",
+                content: userMessage,
+              },
+            ],
+            clipContexts: clipContexts,
+            type: "continue_task",
+            task_id: task_id,
+          }),
+        });
+
+        responseData = await response.json();
+        console.log(responseData)
       }
       if (data.function_name === "adjustBrightness") {
         const functionArgs = JSON.parse(data.function_args);
@@ -478,6 +511,17 @@ export default function Home() {
           ));
         }
       }
+
+
+      if (responseData.type == 'message') {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: responseData.message,
+          },
+        ]);
+
       else if (data.function_name === "trim_video") {
         const functionArgs = JSON.parse(data.function_args);
         const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
@@ -501,8 +545,10 @@ export default function Home() {
         const functionArgs = JSON.parse(data.function_args);
         console.log(functionArgs)
         moveClip(functionArgs.clipId, functionArgs.start);
+
       }
 
+      setIsChatLoading(false);
 
     } catch (error) {
       console.error("Error sending message:", error);
@@ -515,8 +561,6 @@ export default function Home() {
           type: "error",
         },
       ]);
-    } finally {
-      setIsChatLoading(false);
     }
   };
 
@@ -559,18 +603,20 @@ export default function Home() {
   }, [isDraggingPlayhead]);
 
   useEffect(() => {
-    const clips = timelineTracks[0].filter((clip) => {
-      // Check if clip overlaps with cursor range
-      const clipEnd = clip.start + clip.duration;
-      return clip.start <= endCursor && clipEnd >= startCursor;
-    }).map((clip) => ({
-      ...clip,
-      mediaName:
-        mediaList.find((m) => m.id === clip.mediaId)?.name || "Unknown",
-    }));
+    const clips = timelineTracks[0]
+      .filter((clip) => {
+        // Check if clip overlaps with cursor range
+        const clipEnd = clip.start + clip.duration;
+        return clip.start <= endCursor && clipEnd >= startCursor;
+      })
+      .map((clip) => ({
+        ...clip,
+        mediaName:
+          mediaList.find((m) => m.id === clip.mediaId)?.name || "Unknown",
+      }));
 
     setClipsInRange(clips);
-  }, [startCursor, endCursor, timelineTracks, mediaList]);
+  }, [startCursor, endCursor, mediaList, timelineTracks]);
 
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 B";
@@ -852,12 +898,8 @@ export default function Home() {
                 return (
                   <div
                     key={clip.id}
-                    onMouseDown={(e) =>
-                      handleClipMouseDown(e, 0, clipIndex)
-                    }
-                    onClick={(e) =>
-                      handleClipClick(e, 0, clipIndex, clip)
-                    }
+                    onMouseDown={(e) => handleClipMouseDown(e, 0, clipIndex)}
+                    onClick={(e) => handleClipClick(e, 0, clipIndex, clip)}
                     className={`absolute top-0 h-full cursor-move overflow-hidden border transition-colors
                       ${
                         selectedClipInfo?.clip.id === clip.id

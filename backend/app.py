@@ -14,6 +14,8 @@ import utils
 import math
 from concurrent.futures import ThreadPoolExecutor
 import atexit
+import json
+from function_call_def import AVAILABLE_TASK_FUNCTIONS, AVAILABLE_FUNCTIONS
 
 # Load environment variables
 load_dotenv()
@@ -24,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
+
+with app.app_context():
+    tasks = {}
+    task_id = 0
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -196,6 +202,7 @@ def preprocess_image(video_duration, video_path):
 
     return frames, attrs
 
+
 def get_transcript(video_path):
     audio = VideoFileClip(video_path).audio
     audio_temp_dir = tempfile.mkdtemp()
@@ -261,63 +268,6 @@ def preprocess():
         logger.error(f"Error in chat endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    try:
-        print("in chat")
-        data = request.get_json()
-        messages = data.get('messages', [])
-        # print(messages)
-        # print(messages)
-        clip_contexts = data.get('clipContexts', [])
-
-        # print(clip_contexts)
-        # print(clip_contexts)
-        
-        formatted_messages = []
-        for msg in messages:
-            formatted_messages.append({
-                "role": msg['role'],
-                "content": msg['content']
-            })
-
-        formatted_messages.append({
-            "role": "user",
-            "content": f"here is the context for all my videos: {' '.join(clip_contexts)}"
-        })
-
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=formatted_messages,
-            functions=[AVAILABLE_FUNCTIONS["trim_video"], AVAILABLE_FUNCTIONS['cutClip'], AVAILABLE_FUNCTIONS['adjustBrightness'], AVAILABLE_FUNCTIONS['moveClip']],
-            function_call="auto",
-            max_tokens=500
-        )
-
-        assistant_message = response.choices[0].message
-        
-        # If there's a function call
-        if hasattr(assistant_message, 'function_call') and assistant_message.function_call:
-            function_name = assistant_message.function_call.name
-
-            return jsonify({
-                "type": "function_call",
-                "function_name": assistant_message.function_call.name,
-                "function_args": assistant_message.function_call.arguments,
-                "message": "Ok."
-            })
-        else:
-            # If it's just a regular message
-            return jsonify({
-                "type": "message",
-                "message": assistant_message.content
-            })
-
-    except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
 def formatTime(seconds):
     minutes = int(seconds // 60)
     seconds = int(seconds % 60)
@@ -326,6 +276,164 @@ def formatTime(seconds):
 @app.route('/api/health', methods=['GET'])
 def check_health():
     return jsonify({'healthy': 'true'})
+
+def request_for_plan(clip_contexts, messages):
+
+    # Prepare the messages to send to GPT
+    formatted_messages = [{
+        "role": "system",
+        "content": f"You are the planner of an ai agent for video editing. You will be giving tasks to an editor. {AVAILABLE_TASK_FUNCTIONS['create_task']['description']}"
+    }]
+
+    for msg in messages:
+        formatted_messages.append({
+            "role": msg['role'],
+            "content": msg['content']
+        })
+
+    formatted_messages.append({
+        "role": "user",
+        "content": f"here is the context for all my videos: {'-------------------------------------'.join(clip_contexts)}"
+    })
+
+    # Call GPT (with function_call enabled)
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=formatted_messages,
+        functions=[AVAILABLE_TASK_FUNCTIONS["create_task"]],
+        function_call="auto",
+    )
+
+    print(response)
+
+    response = response.choices[0].message
+
+    if hasattr(response, 'function_call') and response.function_call:
+        func_call = response.function_call
+        function_name = func_call.name
+        function_args_str = func_call.arguments  # This is typically a JSON string
+        print(f"name  : {function_name}, args : {function_args_str}")
+        try:
+            args = json.loads(function_args_str)
+        except Exception as e:
+            logger.error(f"Failed to parse function arguments: {e}")
+            args = {}
+
+        logger.info(f"Function call received: {function_name} with arguments: {args}")
+
+        # Execute the appropriate function based on the function call from GPT
+        if function_name == "create_task":
+            steps = args.get('steps', [])
+
+            global task_id
+            task_id += 1
+
+            return create_task(task_id, steps, clip_contexts)
+
+    return jsonify({
+        "type": "message",
+        "message": response.content
+    })
+
+
+@app.route('/api/chatv2', methods=['POST'])
+def reasoning_chat():
+    try:
+
+        data = request.get_json()
+        request_type = data['type']
+        if request_type == 'new_chat':
+            clip_contexts = data.get('clipContexts', [])
+            messages = data.get('messages', [])
+            return request_for_plan(clip_contexts, messages)
+        elif request_type == 'continue_task':
+          task_id = data['task_id']
+          clip_contexts = data.get('clipContexts', [])
+          return continue_task(task_id, clip_contexts)
+
+    except Exception as e:
+        logger.error(e)
+
+def create_task(task_id, steps, clip_contexts):
+    global tasks
+
+    task = {
+        "task_id": task_id,
+        "steps": steps,
+        "current_step": -1
+    }
+    print(task)
+
+    tasks[task_id] = task
+    return continue_task(task_id, clip_contexts)
+
+def continue_task(task_id, clip_contexts):
+    global tasks
+    print('in continue task')
+    print(task_id)
+    print(tasks)
+    print(tasks[task_id])
+    
+    tasks[task_id]["current_step"] += 1
+    curr_step = tasks[task_id]["current_step"] 
+
+    if curr_step == len(tasks[task_id]['steps']):
+        return jsonify({
+            "type": "task_end",
+        })
+
+    task = tasks[task_id]['steps'][curr_step]
+    formatted_messages = [{
+        "role": "system",
+        "content": "You are the executor of an ai agent system for editing videos. You have available functions to edit videos and will be given the context of the each video in the timeline of the editor. You will also be given a list of steps and the current step we are on. ONLY execute the step you are currently on."
+    }]
+
+    formatted_messages.append({
+        "role": "user",
+        "content": f"here is the context for all my videos: {' '.join(clip_contexts)}"
+    })
+
+    previous_steps = "-------previous steps"
+
+    for i in range(curr_step):
+        previous_steps += f"{i + 1}. {tasks[task_id]['steps'][i]}\n"
+    previous_steps += "\n-------------------------------"
+
+    formatted_messages.append({
+        "role": "user",
+        "content": previous_steps
+    })
+
+    formatted_messages.append({
+        "role": "user",
+        "content": f"Here is the current step: {task}"
+    })
+
+    print(formatted_messages)
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=formatted_messages,
+        functions=[AVAILABLE_FUNCTIONS['cutClip'], AVAILABLE_FUNCTIONS['moveClip'], AVAILABLE_FUNCTIONS['deleteClip']],
+        function_call="auto",
+    )
+    assistant_message = response.choices[0].message
+
+    if hasattr(assistant_message, 'function_call') and assistant_message.function_call:
+        return jsonify({
+            "type": "function_call",
+            "function_name": assistant_message.function_call.name,
+            "function_args": assistant_message.function_call.arguments,
+            "message": task,
+            "task_id": task_id
+        })
+
+    else:
+        return jsonify({
+            "type": "message",
+            "message": assistant_message.content
+        })
+
 
 # Ensure to shut down the executor when the application is stopped
 atexit.register(executor.shutdown)
