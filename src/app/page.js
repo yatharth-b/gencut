@@ -501,12 +501,6 @@ export default function Home() {
         moveClip(functionArgs.clipId, functionArgs.start);
       }
 
-      // If it's a function call to rearrange the clips
-      if (data.function_name === "moveClip") {
-        const functionArgs = JSON.parse(data.function_args);
-        console.log(functionArgs)
-        moveClip(functionArgs.clipId, functionArgs.start);
-      }
 
     } catch (error) {
       console.error("Error sending message:", error);
