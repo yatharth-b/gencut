@@ -1,7 +1,5 @@
 import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
 import { toBlobURL } from '@ffmpeg/util';
-import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
-import { toBlobURL } from '@ffmpeg/util';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB limit
 
@@ -31,17 +29,11 @@ const loadFFmpeg = async () => {
 };
 
 const writeInputFile = async (input) => {
-const writeInputFile = async (input) => {
     try {
         const data = await fetchFile(input);
         if (data.length > MAX_FILE_SIZE) {
             throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
-        const data = await fetchFile(input);
-        if (data.length > MAX_FILE_SIZE) {
-            throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
         }
-        ffmpeg.FS('writeFile', 'input.mp4', data);
-        console.log('File written successfully');
         ffmpeg.FS('writeFile', 'input.mp4', data);
         console.log('File written successfully');
     } catch (error) {

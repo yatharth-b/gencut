@@ -8,7 +8,6 @@ import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
 import { adjustBrightness } from "./utils";
 
-import { adjustBrightness } from "./utils";
 
 
 
@@ -319,38 +318,8 @@ export default function Home() {
     // Add new media to mediaList
     setMediaList(prev => [...prev, newMedia]);
     return newMedia.id;
-};
-  const cutClip = async (clipId, cutPoint) => {
-  const createMediaCopy = async (originalMediaId) => {
-    // Find the original media from mediaList
-    const originalMedia = mediaList.find(m => m.id === originalMediaId);
-    if (!originalMedia) {
-        console.error("Original media not found");
-        return null;
-    }
+  };
 
-    // Create a deep copy of the original media file and blob
-    const originalBlob = originalMedia.file;
-    const copiedBlob = new Blob([originalBlob], { type: originalBlob.type });
-    const copiedFile = new File([copiedBlob], `${originalMedia.name}_copy.mp4`, { type: originalBlob.type });
-    const copiedUrl = URL.createObjectURL(copiedBlob);
-
-    // Create a deep copy of the media object
-    const newMedia = {
-        id: `media-${Date.now()}`,
-        file: copiedFile,
-        url: copiedUrl,
-        name: `${originalMedia.name} (Copy)`,
-        duration: originalMedia.duration,
-        thumbnails: originalMedia.thumbnails.map(thumb => ({...thumb})), // Deep copy thumbnails
-        loading: false,
-        type: originalMedia.type
-    };
-
-    // Add new media to mediaList
-    setMediaList(prev => [...prev, newMedia]);
-    return newMedia.id;
-};
   const cutClip = async (clipId, cutPoint) => {
     console.log(timelineTracks)
     const clipToCut = timelineTracks[0].find(c => c.id === clipId);
@@ -390,18 +359,6 @@ export default function Home() {
     if (newMediaId) {
         secondHalf.mediaId = newMediaId;
     }
-
-
-
-
-
-    // Create copy and update secondHalf
-    const newMediaId = await createMediaCopy(clipToCut.mediaId);
-    if (newMediaId) {
-        secondHalf.mediaId = newMediaId;
-    }
-
-
 
 
 
