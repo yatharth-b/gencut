@@ -66,7 +66,8 @@ export default function MediaList({
         loading: true,
         imageDescriptions: [],
         imageAttributes: [],
-        transcription: []
+        transcription: [],
+        hidden: false
       };
 
       const formData = new FormData();
@@ -174,7 +175,7 @@ export default function MediaList({
         <FileInput onChange={handleVideoUpload} disabled={ffmpegLoading} />
       </div>
       <div className="space-y-2">
-        {mediaList.map((media) => (
+        {mediaList.filter(media => !media.hidden).map((media) => (
           <div
             key={media.id}
             draggable
