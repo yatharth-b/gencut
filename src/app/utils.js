@@ -13,6 +13,11 @@ const ffmpeg = createFFmpeg({
 const loadFFmpeg = async () => {
     if (!ffmpeg.isLoaded()) {
         try {
+            // Set up logger before loading
+            // ffmpeg.setLogger(({ type, message }) => {
+            //     console.log(`FFmpeg [${type}]: ${message}`);
+            // });
+            
             await ffmpeg.load();
             console.log('FFmpeg is ready!');
         } catch (error) {
@@ -36,56 +41,46 @@ const writeInputFile = async (input) => {
         throw error;
     }
 };
-
-const getOutputFile = async (ffmpeg) => {
+const getOutputFile = async (ffmpeg, outputFileName) => {
     try {
-        // Add a small delay to ensure file writing is complete
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
         // List files in FS to debug
         const files = ffmpeg.FS('readdir', '/');
         console.log('Files in FFmpeg filesystem:', files);
 
         // Check if output file exists
-        if (!files.includes('output.mp4')) {
-            throw new Error('Output file not found in FFmpeg filesystem');
+        if (!files.includes(outputFileName)) {
+            throw new Error(`Output file ${outputFileName} not found`);
         }
 
-        const data = ffmpeg.FS('readFile', 'output.mp4');
-        if (!data || !data.buffer) {
-            throw new Error('Invalid output data from FFmpeg');
-        }
-
-        const outputBlob = new Blob([data.buffer], { type: 'video/mp4' });
-        return URL.createObjectURL(outputBlob);
+        const data = ffmpeg.FS('readFile', outputFileName);
+        return data;
     } catch (error) {
-        console.error('Detailed error in getOutputFile:', error);
-        throw new Error(`Error reading output file: ${error.message}`);
+        console.error('Error in getOutputFile:', error);
+        throw new Error(`Error getting output file: ${error.message}`);
     }
 };
 
-const processVideo = async (input, ffmpegCommands) => {
+const processVideo = async (input, ffmpegCommands, outputFileName) => {
     try {
         await loadFFmpeg();
         await writeInputFile(input);
-        
 
-        console.log('Running FFmpeg command:', ffmpegCommands);
+        console.log('Running FFmpeg command:', ...ffmpegCommands);
         await ffmpeg.run(...ffmpegCommands);
-        const data = ffmpeg.FS('readFile', 'output.mp4');
-        
-        console.log('Output data:', data);
+        // List files in FS to debug
+        const filesAfterProcessing = ffmpeg.FS('readdir', '/');
+        console.log('Files in FFmpeg filesystem after processing:', filesAfterProcessing);
+
+        const outputFile = await getOutputFile(ffmpeg, outputFileName);
 
         try {
             ffmpeg.FS('unlink', 'input.mp4');
-            ffmpeg.FS('unlink', 'output.mp4');
+            ffmpeg.FS('unlink', outputFileName);
         } catch (e) {
             console.log('Cleanup error:', e);
         }
         
-        // Return the output data
-        getOutputFile(data);
-        // return data; 
+        return outputFile;
     } catch (error) {
         console.error('Error processing video:', error);
         throw error;
@@ -93,36 +88,49 @@ const processVideo = async (input, ffmpegCommands) => {
 };
 
 export const adjustBrightness = async (input, brightness, setMediaList) => {
+    // Convert brightness to decimal if it's a whole number
+    brightness = brightness > 1 ? brightness / 100 : brightness;
     console.log('Adjusting brightness:', brightness);
-    
     try {
-        const outputUrl = await processVideo(input, [
+        const outputFileName = 'output.mp4';
+        const data = await processVideo(input, [
             '-i', 'input.mp4',
             '-vf', `eq=brightness=${brightness}`,
             '-c:v', 'libx264',
-            '/output.mp4'
-        ]);
+            outputFileName
+        ], outputFileName);
 
-        console.log('Output is made');  
+        // Create a blob from the Uint8Array data
+        const outputBlob = new Blob([data.buffer], { type: 'video/mp4' });
+        const outputFile = new File([outputBlob], 'brightness_adjusted.mp4', { type: 'video/mp4' });
+        const outputUrl = URL.createObjectURL(outputBlob);
 
-        // Create a new media entry
+        // Create video element to get duration
+        const video = document.createElement('video');
+        video.src = outputUrl;
+        
+        // Wait for metadata to load to get duration
+        await new Promise((resolve) => {
+            video.onloadedmetadata = () => resolve();
+            video.onerror = () => resolve();
+        });
+
+        // Create new media entry
         const newMedia = {
             id: `media-${Date.now()}`,
-            clipId: input.clipId || null,
-            name: `Brightness Adjusted Video (${brightness})`,
+            file: outputFile,
             url: outputUrl,
-            duration: input.duration || 0,
-            thumbnails: [], 
-            type: 'video/mp4',
-            imageDescriptions: input.imageDescriptions || [],
-            imageAttributes: input.imageAttributes || [],
-            transcription: input.transcription || []
+            name: `Brightness Adjusted (${brightness})`,
+            duration: video.duration,
+            thumbnails: [], // Thumbnails will be generated by MediaList component
+            loading: false,
+            type: 'video/mp4'
         };
 
-        // Add the new media to mediaList
-        setMediaList(prevList => [...prevList, newMedia]);
+        // Add to media list
+        setMediaList(prev => [...prev, newMedia]);
         
-        return newMedia.id; // Return the new media ID for reference
+        return newMedia.id;
     } catch (error) {
         console.error('Error adjusting brightness:', error);
         throw error;
@@ -168,6 +176,7 @@ export const convertToGrayscale = async (input) => {
         'output.mp4'
     ]);
 };
+
 
 // Example usage with error handling
 export const runExamples = async () => {
