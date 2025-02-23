@@ -497,6 +497,10 @@ export default function Home() {
     return updatedClips;
   };
 
+  useEffect(() => {
+    console.log('Updated timelineTracks:', timelineTracks);
+  }, [timelineTracks]);
+
   const moveClip = (clipId, newStart, tempTimeline) => {
     console.log("Move clip", clipId, newStart);
     const clipToMove = tempTimeline[0].find((c) => c.clip_id === clipId);
@@ -607,14 +611,21 @@ export default function Home() {
             tempTimeline,
             tempMediaList
           );
+
+          setTimelineTracks(JSON.parse(JSON.stringify(tempTimeline)));
+          setMediaList(JSON.parse(JSON.stringify(tempMediaList)));
         }
 
         if (responseData.function_name === "moveClip") {
           moveClip(functionArgs.clipId, functionArgs.start, tempTimeline);
+          setTimelineTracks(JSON.parse(JSON.stringify(tempTimeline)));
+          setMediaList(JSON.parse(JSON.stringify(tempMediaList)));
         }
 
         if (responseData.function_name === "deleteClip") {
           tempTimeline = deleteClipGpt(functionArgs.clipId, tempTimeline);
+          setTimelineTracks(JSON.parse(JSON.stringify(tempTimeline)));
+          setMediaList(JSON.parse(JSON.stringify(tempMediaList)));
         }
 
         if (responseData.function_name === "adjustBrightness") {
@@ -724,19 +735,19 @@ export default function Home() {
             parseModifyJson(responseData);
           if (videoUrl) {
             const selectedMedia = mediaList.find(
-              (m) => m.id === selectedClip?.mediaId
+              (m) => m.id == selectedClip?.mediaId
             );
-            
+
             console.log("selected media: ", selectedMedia);
             const newMediaId = await convertToGrayscale(
               selectedMedia.file,
               setMediaList
             );
 
-            console.log('in grayscale')
-            console.log(mediaId)
-            console.log(selectedClip)
-            console.log(timelineTracks)
+            console.log("in grayscale");
+            console.log(newMediaId);
+            console.log(selectedClip);
+            console.log(timelineTracks);
             // Update the clip to point to the new media
             setTimelineTracks((prev) =>
               prev.map((track) =>
@@ -862,9 +873,6 @@ export default function Home() {
         console.log(responseData);
       }
 
-      setTimelineTracks(JSON.parse(JSON.stringify(tempTimeline)));
-      setMediaList(JSON.parse(JSON.stringify(tempMediaList)));
-
       if (responseData.type == "message") {
         setMessages((prev) => [
           ...prev,
@@ -928,6 +936,8 @@ export default function Home() {
   }, [isDraggingPlayhead]);
 
   useEffect(() => {
+    console.log(timelineTracks);
+    console.log(mediaList);
     const clips = timelineTracks[0]
       .filter((clip) => {
         // Check if clip overlaps with cursor range
