@@ -125,7 +125,7 @@ const processVideoMediaList = async(input, effectName, ffmpegCommand, setMediaLi
         
         return newMedia.id;
     } catch (error) {
-        console.error('Error adjusting brightness:', error);
+        console.error('Error adjusting:', error);
         throw error;
     }
 }
@@ -148,7 +148,7 @@ export const adjustBrightness = async (input, brightness, setMediaList) => {
 };
 
 export const changeAspectRatio = async (input, width, height, setMediaList) => {
-    return processVideoWithEffect(
+    return processVideoMediaList(
         input,
         `Aspect Ratio Changed (${width}x${height})`,
         [
@@ -162,7 +162,7 @@ export const changeAspectRatio = async (input, width, height, setMediaList) => {
 };
 
 export const applyColorGrading = async (input, contrast, gamma, saturation, setMediaList) => {
-    return processVideoWithEffect(
+    return processVideoMediaList(
         input,
         `Color Graded (C:${contrast} G:${gamma} S:${saturation})`,
         [
@@ -176,7 +176,7 @@ export const applyColorGrading = async (input, contrast, gamma, saturation, setM
 };
 
 export const adjustSaturation = async (input, saturation, setMediaList) => {
-    return processVideoWithEffect(
+    return processVideoMediaList(
         input,
         `Saturation Adjusted (${saturation})`,
         [
@@ -190,7 +190,7 @@ export const adjustSaturation = async (input, saturation, setMediaList) => {
 };
 
 export const addBlurEffect = async (input, blurStrength, setMediaList) => {
-    return processVideoWithEffect(
+    return processVideoMediaList(
         input,
         `Blur Applied (${blurStrength})`,
         [
@@ -204,7 +204,7 @@ export const addBlurEffect = async (input, blurStrength, setMediaList) => {
 };
 
 export const convertToGrayscale = async (input, setMediaList) => {
-    return processVideoWithEffect(
+    return processVideoMediaList(
         input,
         'Grayscale',
         [

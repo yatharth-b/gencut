@@ -6,7 +6,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
-import { adjustBrightness, applyColorGrading, trimVideo } from "./utils";
+import { addBlurEffect, adjustBrightness, adjustSaturation, applyColorGrading, convertToGrayscale, trimVideo } from "./utils";
 
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
@@ -461,7 +461,7 @@ export default function Home() {
         console.log(selectedClip)
         const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
         console.log(videoUrl)
-        return (functionArgs, selectedClip, videoUrl);
+        return {functionArgs, selectedClip, videoUrl};
       };
 
         let responseData = await response.json();
@@ -542,7 +542,7 @@ export default function Home() {
         const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
         if (videoUrl) {
           const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          const newMediaId = await applyColorGrading(selectedMedia.file, functionArgs.saturation, setMediaList);
+          const newMediaId = await adjustSaturation(selectedMedia.file, functionArgs.saturation, setMediaList);
           // Update the clip to point to the new media
           setTimelineTracks(prev => prev.map(track => 
             track.map(clip => 
@@ -558,7 +558,7 @@ export default function Home() {
         const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
         if (videoUrl) {
           const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          const newMediaId = await applyColorGrading(selectedMedia.file, functionArgs.blurStrength, setMediaList);
+          const newMediaId = await addBlurEffect(selectedMedia.file, functionArgs.blurStrength, setMediaList);
           // Update the clip to point to the new media
           setTimelineTracks(prev => prev.map(track => 
             track.map(clip => 
@@ -574,7 +574,8 @@ export default function Home() {
         const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
         if (videoUrl) {
           const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          const newMediaId = await applyColorGrading(selectedMedia.file, setMediaList);
+          console.log("selected media: ", selectedMedia);
+          const newMediaId = await convertToGrayscale(selectedMedia.file, setMediaList);
           // Update the clip to point to the new media
           setTimelineTracks(prev => prev.map(track => 
             track.map(clip => 
