@@ -19,7 +19,11 @@ export default function VideoPlayer({
   setTimelineTracks,
   setSelectedClipInfo,
   cutClip,
-  ffmpegLoaded
+  ffmpegLoaded,
+  setLoading,
+  mediaList,
+  ffmpeg,
+  fetchFile
 }) {
   const formatTime = (time) => {
     const minutes = Math.floor(time / 60);

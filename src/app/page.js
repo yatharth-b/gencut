@@ -695,6 +695,10 @@ export default function Home() {
             setSelectedClipInfo={setSelectedClipInfo}
             cutClip={cutClip}
             ffmpegLoaded={ffmpegLoaded}
+            setLoading={setLoading}
+            mediaList={mediaList}
+            ffmpeg={ffmpeg}
+            fetchFile={fetchFile}
           />
 
           {/* Chat panel */}
