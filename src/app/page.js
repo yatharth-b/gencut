@@ -403,7 +403,7 @@ export default function Home() {
 
         if (responseData.function_name === "deleteClip") {
           const functionArgs = JSON.parse(responseData.function_args);
-          moveClip(functionArgs.deleteClip, functionArgs.start);
+          moveClip(functionArgs.clipId);
         }
 
         clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));

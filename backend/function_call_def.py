@@ -1,7 +1,7 @@
 AVAILABLE_TASK_FUNCTIONS = {
     "create_task": {
         "name": "create_task",
-        "description": "Create a new task with a list of steps. The task starts at step 1. A new task should be created every time a user sends a message. The only available steps are: cutting a clip into two, moving a clip, altering the colors/brightness of a clip. Put each use of a tool in a new step. Each step should be a very basic and clear command in terms of which tool to apply to which clip. Consider that every time you cut a clip, a new clip will be created. You should mention which clip you want to make changes to using their clip IDs or their relative positioning like 'the third clip'",
+        "description": "Create a new task with a list of steps. The task starts at step 1. A new task should be created every time a user sends a message. The only available steps are: cutting a clip into two, moving a clip, deleting a clip, altering the colors/brightness of a clip. Put each use of a tool in a new step. Each step should be a very basic and clear command in terms of which tool to apply to which clip. Consider that every time you cut a clip, a new clip will be created. You should mention which clip you want to make changes to using their clip IDs or their relative positioning like 'the third clip'. Each step should only require the editor to call one function.",
         "parameters": {
             "type": "object",
             "properties": {

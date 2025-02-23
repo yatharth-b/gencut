@@ -202,7 +202,7 @@ def request_for_plan(clip_contexts, messages):
     # Prepare the messages to send to GPT
     formatted_messages = [{
         "role": "system",
-        "content": AVAILABLE_TASK_FUNCTIONS['create_task']['description']
+        "content": f"You are the planner of an ai agent for video editing. You will be giving tasks to an editor. {AVAILABLE_TASK_FUNCTIONS['create_task']['description']}"
     }]
 
     for msg in messages:
@@ -313,11 +313,23 @@ def continue_task(task_id, clip_contexts):
         "content": f"here is the context for all my videos: {' '.join(clip_contexts)}"
     })
 
+    previous_steps = "-------previous steps"
+
+    for i in range(curr_step):
+        previous_steps += f"{i + 1}. {tasks[task_id]['steps'][i]}\n"
+    previous_steps += "\n-------------------------------"
+
+    formatted_messages.append({
+        "role": "user",
+        "content": previous_steps
+    })
+
     formatted_messages.append({
         "role": "user",
         "content": f"Here is the current step: {task}"
     })
 
+    print(formatted_messages)
 
     response = client.chat.completions.create(
         model="gpt-4o",
