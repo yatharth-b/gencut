@@ -1,8 +1,29 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
+
 
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
+
+const ffmpeg = createFFmpeg({
+    corePath: "https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js",
+});
+
+let ffmpegLoaded = false;
+const loadFFmpeg = async () => {
+    if (!ffmpegLoaded) {
+        try {
+            await ffmpeg.load();
+            ffmpegLoaded = true;
+            console.log('FFmpeg is ready!');
+        } catch (error) {
+            console.error('Failed to load FFmpeg:', error);
+            throw error;
+        }
+    }
+    return ffmpeg;
+};
 
 export default function VideoPlayer({
   videoRef,
@@ -15,6 +36,7 @@ export default function VideoPlayer({
   setCurrentTime,
   selectedClipInfo,
   loading,
+  setLoading,
   timelineTracks,
   setTimelineTracks,
   setSelectedClipInfo,
@@ -25,7 +47,12 @@ export default function VideoPlayer({
   ffmpeg,
   fetchFile
 }) {
-  const formatTime = (time) => {
+    
+    useEffect(() => {
+        loadFFmpeg().catch(console.error);
+    }, []);
+    
+    const formatTime = (time) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     const milliseconds = Math.floor((time % 1) * 100);
