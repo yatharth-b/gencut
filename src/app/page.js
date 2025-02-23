@@ -6,7 +6,16 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
-import { addBlurEffect, adjustBrightness, adjustSaturation, applyColorGrading, applyFadeIn, applyFadeOut, convertToGrayscale, trimVideo } from "./utils";
+import {
+  addBlurEffect,
+  adjustBrightness,
+  adjustSaturation,
+  applyColorGrading,
+  applyFadeIn,
+  applyFadeOut,
+  convertToGrayscale,
+  trimVideo,
+} from "./utils";
 
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
@@ -150,7 +159,7 @@ export default function Home() {
   const deleteClipGpt = (clip_id, tempTimeline) => {
     tempTimeline[0] = tempTimeline[0].filter((c) => c.clip_id !== clip_id);
     return tempTimeline;
-  }
+  };
 
   const handleMediaDragStart = (media) => {
     setDraggingMedia(media);
@@ -199,7 +208,9 @@ export default function Home() {
     // Update the timelineTracks state directly
     setTimelineTracks((prev) => {
       const updatedTrack = prev[0].map((clip) =>
-        clip.clip_id === draggingClip.clip.clip_id ? { ...clip, start: newStart } : clip
+        clip.clip_id === draggingClip.clip.clip_id
+          ? { ...clip, start: newStart }
+          : clip
       );
       return [updatedTrack];
     });
@@ -373,7 +384,6 @@ export default function Home() {
     return newMedia.id;
   };
 
-
   const cutClipGpt = async (clipId, cutPoint, tempTimeline, tempMediaList) => {
     const clipToCut = tempTimeline[0].find((c) => c.clip_id === clipId);
     if (!clipToCut) {
@@ -408,7 +418,10 @@ export default function Home() {
     };
 
     // Create copy and update secondHalf
-    const newMediaId = await createMediaCopyGpt(clipToCut.mediaId, tempMediaList);
+    const newMediaId = await createMediaCopyGpt(
+      clipToCut.mediaId,
+      tempMediaList
+    );
     if (newMediaId) {
       secondHalf.mediaId = newMediaId;
     }
@@ -532,27 +545,31 @@ export default function Home() {
       // Filter out card messages before sending
       const messagesToSend = prevMessages.filter((msg) => msg.role !== "card");
 
-        let response = await fetch("http://localhost:5050/api/chatv2", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                messages: [...messagesToSend, { role: 'user', content: userMessage }],
-                clipContexts: clipContexts,
-                type: "new_chat",
-            }),
-        });
+      let response = await fetch("http://localhost:5050/api/chatv2", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [...messagesToSend, { role: "user", content: userMessage }],
+          clipContexts: clipsInRange,
+          type: "new_chat",
+        }),
+      });
       // Get clip contexts
 
       const parseModifyJson = (data) => {
         const functionArgs = JSON.parse(data.function_args);
         console.log(data.function_name);
         console.log(functionArgs);
-        const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
-        console.log(selectedClip)
-        const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
-        console.log(videoUrl)
+        const selectedClip = timelineTracks[0].find(
+          (clip) => clip.clip_id === functionArgs.clipId
+        );
+        console.log(selectedClip);
+        const videoUrl = mediaList.find(
+          (m) => m.id === selectedClip?.mediaId
+        )?.url;
+        console.log(videoUrl);
         return [functionArgs, selectedClip, videoUrl];
       };
 
@@ -561,8 +578,8 @@ export default function Home() {
       let tempTimeline = [...timelineTracks];
       let tempMediaList = [...mediaList];
 
-      console.log('first response')
-      console.log(responseData)
+      console.log("first response");
+      console.log(responseData);
 
       while (responseData.type == "function_call") {
         const functionArgs = JSON.parse(responseData.function_args);
@@ -600,151 +617,134 @@ export default function Home() {
           tempTimeline = deleteClipGpt(functionArgs.clipId, tempTimeline);
         }
 
-            if (responseData.function_name === "adjustBrightness") {
-                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-                if (videoUrl) {
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                    clip.id === functionArgs.clipId 
-                        ? {...clip, mediaId: newMediaId}
-                        : clip
-                    )
-                ));
-                }
-            }
-
-            if (responseData.function_name === "applyColorGrading") {
-                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-                if (videoUrl) {
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                const newMediaId = await applyColorGrading(selectedMedia.file, functionArgs.contrast, functionArgs.gamma, functionArgs.saturation, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                    clip.id === functionArgs.clipId 
-                        ? {...clip, mediaId: newMediaId}
-                        : clip
-                    )
-                ));
-                }
-            }
-
-            if (responseData.function_name === "adjustSaturation") {
-                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-                if (videoUrl) {
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                const newMediaId = await adjustSaturation(selectedMedia.file, functionArgs.saturation, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                    clip.id === functionArgs.clipId 
-                        ? {...clip, mediaId: newMediaId}
-                        : clip
-                    )
-                ));
-                }
-            }
-
-            if (responseData.function_name === "addBlurEffect") {
-                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-                if (videoUrl) {
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                const newMediaId = await addBlurEffect(selectedMedia.file, functionArgs.blurStrength, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                    clip.id === functionArgs.clipId 
-                        ? {...clip, mediaId: newMediaId}
-                        : clip
-                    )
-                ));
-                }
-            }
-
-            if (responseData.function_name === "convertToGrayscale") {
-                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-                if (videoUrl) {
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                console.log("selected media: ", selectedMedia);
-                const newMediaId = await convertToGrayscale(selectedMedia.file, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                    clip.id === functionArgs.clipId
-                        ? {...clip, mediaId: newMediaId}
-                        : clip
-                    )
-                ));
-            }
+        if (responseData.function_name === "adjustBrightness") {
+          const [functionArgs, selectedClip, videoUrl] =
+            parseModifyJson(responseData);
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(
+              (m) => m.id === selectedClip?.mediaId
+            );
+            const newMediaId = await adjustBrightness(
+              selectedMedia.file,
+              functionArgs.brightness,
+              setMediaList
+            );
+            // Update the clip to point to the new media
+            setTimelineTracks((prev) =>
+              prev.map((track) =>
+                track.map((clip) =>
+                  clip.clip_id === functionArgs.clipId
+                    ? { ...clip, mediaId: newMediaId }
+                    : clip
+                )
+              )
+            );
+          }
         }
 
-            if (responseData.function_name === "trim_video") {
-                const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                if (!selectedMedia) {
-                    console.error('Media not found for clip');
-                    return;
-                }
-                const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                        clip.id === functionArgs.clipId 
-                            ? {...clip, mediaId: newMediaId}
-                            : clip
-                    )
-                ));
-            }
+        if (responseData.function_name === "applyColorGrading") {
+          const [functionArgs, selectedClip, videoUrl] =
+            parseModifyJson(responseData);
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(
+              (m) => m.id === selectedClip?.mediaId
+            );
+            const newMediaId = await applyColorGrading(
+              selectedMedia.file,
+              functionArgs.contrast,
+              functionArgs.gamma,
+              functionArgs.saturation,
+              setMediaList
+            );
+            // Update the clip to point to the new media
+            setTimelineTracks((prev) =>
+              prev.map((track) =>
+                track.map((clip) =>
+                  clip.clip_id === functionArgs.clipId
+                    ? { ...clip, mediaId: newMediaId }
+                    : clip
+                )
+              )
+            );
+          }
+        }
 
-            if (responseData.function_name === "appleFadeIn") {
-                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-                if (videoUrl) {
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                const newMediaId = await applyFadeIn(selectedMedia.file, functionArgs.duration, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                    clip.id === functionArgs.clipId 
-                        ? {...clip, mediaId: newMediaId}
-                        : clip
-                    )
-                ));
-                }
-            }
+        if (responseData.function_name === "adjustSaturation") {
+          const [functionArgs, selectedClip, videoUrl] =
+            parseModifyJson(responseData);
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(
+              (m) => m.id === selectedClip?.mediaId
+            );
+            const newMediaId = await adjustSaturation(
+              selectedMedia.file,
+              functionArgs.saturation,
+              setMediaList
+            );
+            // Update the clip to point to the new media
+            setTimelineTracks((prev) =>
+              prev.map((track) =>
+                track.map((clip) =>
+                  clip.clip_id === functionArgs.clipId
+                    ? { ...clip, mediaId: newMediaId }
+                    : clip
+                )
+              )
+            );
+          }
+        }
 
-            if (responseData.function_name === "applyFadeOut") {
-                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-                if (videoUrl) {
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                const newMediaId = await applyFadeOut(selectedMedia.file, functionArgs.duration, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                    clip.id === functionArgs.clipId 
-                        ? {...clip, mediaId: newMediaId}
-                        : clip
-                    )
-                ));
-                }
-            }
+        if (responseData.function_name === "addBlurEffect") {
+          const [functionArgs, selectedClip, videoUrl] =
+            parseModifyJson(responseData);
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(
+              (m) => m.id === selectedClip?.mediaId
+            );
+            const newMediaId = await addBlurEffect(
+              selectedMedia.file,
+              functionArgs.blurStrength,
+              setMediaList
+            );
+            // Update the clip to point to the new media
+            setTimelineTracks((prev) =>
+              prev.map((track) =>
+                track.map((clip) =>
+                  clip.clip_id === functionArgs.clipId
+                    ? { ...clip, mediaId: newMediaId }
+                    : clip
+                )
+              )
+            );
+          }
+        }
 
-            clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
+        if (responseData.function_name === "convertToGrayscale") {
+          const [functionArgs, selectedClip, videoUrl] =
+            parseModifyJson(responseData);
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(
+              (m) => m.id === selectedClip?.mediaId
+            );
+            
+            console.log("selected media: ", selectedMedia);
+            const newMediaId = await convertToGrayscale(
+              selectedMedia.file,
+              setMediaList
+            );
+            // Update the clip to point to the new media
+            setTimelineTracks((prev) =>
+              prev.map((track) =>
+                track.map((clip) =>
+                  clip.clip_id === functionArgs.clipId
+                    ? { ...clip, mediaId: newMediaId }
+                    : clip
+                )
+              )
+            );
+          }
+        }
 
-            response = await fetch("http://localhost:5050/api/chatv2", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    messages: messagesToSend,
-                    clipContexts: clipContexts,
-                    type: "continue_task",
-                    task_id: task_id,
-                }),
-            });
         if (responseData.function_name === "trim_video") {
           const selectedClip = timelineTracks[0].find(
             (clip) => clip.clip_id === functionArgs.clipId
@@ -774,6 +774,56 @@ export default function Home() {
           );
         }
 
+        if (responseData.function_name === "applyFadeIn") {
+          const [functionArgs, selectedClip, videoUrl] =
+            parseModifyJson(responseData);
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(
+              (m) => m.id === selectedClip?.mediaId
+            );
+            const newMediaId = await applyFadeIn(
+              selectedMedia.file,
+              functionArgs.duration,
+              setMediaList
+            );
+            // Update the clip to point to the new media
+            setTimelineTracks((prev) =>
+              prev.map((track) =>
+                track.map((clip) =>
+                  clip.clip_id === functionArgs.clipId
+                    ? { ...clip, mediaId: newMediaId }
+                    : clip
+                )
+              )
+            );
+          }
+        }
+
+        if (responseData.function_name === "applyFadeOut") {
+          const [functionArgs, selectedClip, videoUrl] =
+            parseModifyJson(responseData);
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(
+              (m) => m.id === selectedClip?.mediaId
+            );
+            const newMediaId = await applyFadeOut(
+              selectedMedia.file,
+              functionArgs.duration,
+              setMediaList
+            );
+            // Update the clip to point to the new media
+            setTimelineTracks((prev) =>
+              prev.map((track) =>
+                track.map((clip) =>
+                  clip.clip_id === functionArgs.clipId
+                    ? { ...clip, mediaId: newMediaId }
+                    : clip
+                )
+              )
+            );
+          }
+        }
+
         console.log(`temp timeline`);
         console.log(tempTimeline);
 
@@ -787,8 +837,8 @@ export default function Home() {
             mediaName:
               mediaList.find((m) => m.id === clip.mediaId)?.name || "Unknown",
           }));
-          
-        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         response = await fetch("http://localhost:5050/api/chatv2", {
           method: "POST",
           headers: {
@@ -803,7 +853,7 @@ export default function Home() {
         });
 
         responseData = await response.json();
-        console.log('received response');
+        console.log("received response");
         console.log(responseData);
       }
 

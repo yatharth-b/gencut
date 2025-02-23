@@ -138,33 +138,33 @@ def preprocess_image(video_duration, video_path):
 
 
 def get_transcript(video_path):
-    audio = VideoFileClip(video_path).audio
-    audio_temp_dir = tempfile.mkdtemp()
-    audio_path = os.path.join(audio_temp_dir, secure_filename(f'audio.wav'))
-    print("audiopath")
-    audio.write_audiofile(audio_path)
+    with VideoFileClip(video_path) as video:
+        audio_temp_dir = tempfile.mkdtemp()
+        audio_path = os.path.join(audio_temp_dir, secure_filename(f'audio.wav'))
+        print("audiopath")
+        video.audio.write_audiofile(audio_path)
 
-    # Use a context manager to ensure the file is closed after use
-    with open(audio_path, "rb") as audio_file:
-        transcript = client.audio.transcriptions.create(
-            file=audio_file,
-            model="whisper-1",
-            response_format="verbose_json",
-            timestamp_granularities=["word"]
-        )
+        # Use a context manager to ensure the file is closed after use
+        with open(audio_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-1",
+                response_format="verbose_json",
+                timestamp_granularities=["word"]
+            )
 
-    sec_transcription = [[] for _ in range(math.ceil(transcript.duration))]
+        sec_transcription = [[] for _ in range(math.ceil(transcript.duration))]
 
-    for word in transcript.words:
-        for sec in range(int(word.start), math.ceil(word.end)):
-            sec_transcription[sec].append(word.word)
+        for word in transcript.words:
+            for sec in range(int(word.start), math.ceil(word.end)):
+                sec_transcription[sec].append(word.word)
 
-    for sec in range(len(sec_transcription)):
-        sec_transcription[sec] = ' '.join(sec_transcription[sec])
-    
-    os.remove(audio_path)
-    os.rmdir(audio_temp_dir)
-    return sec_transcription[1:-1] 
+        for sec in range(len(sec_transcription)):
+            sec_transcription[sec] = ' '.join(sec_transcription[sec])
+        
+        os.remove(audio_path)
+        os.rmdir(audio_temp_dir)
+        return sec_transcription[1:-1] 
     # This is because there is not really a message at 0 and last frame.. that should also be in the 1st and 2nd last timestamp
 
 @app.route('/api/preprocess', methods=['POST'])
@@ -178,13 +178,14 @@ def preprocess():
             return jsonify({'error': 'No video file provided'}), 400
         
         video_temp_dir = tempfile.mkdtemp()
-        video_path = os.path.join(video_temp_dir, f"{secure_filename(video_file.name)}")
-        video_file.save(video_path)
+        video_path_preprocess = os.path.join(video_temp_dir, f"{secure_filename(video_file.name)}")
+        video_path_transcript = os.path.join(video_temp_dir, f"transcript_{secure_filename(video_file.name)}")
+        video_file.save(video_path_preprocess)
 
-        image_desc, attrs = preprocess_image(video_duration, video_path)
-        transcription = get_transcript(video_path)
+        image_desc, attrs = preprocess_image(video_duration, video_path_preprocess)
+        transcription = get_transcript(video_path_preprocess)
 
-        os.remove(video_path)
+        os.remove(video_path_preprocess)
         os.rmdir(video_temp_dir)
 
         logger.info("Successfully finished preprocessing")
