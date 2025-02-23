@@ -49,6 +49,18 @@ gemini_client = OpenAI(api_key=os.getenv('GEMINI_API_KEY'), base_url="https://ge
 #         }
 #     }
 
+# Define the available functions
+def trim_video(start_time: float, end_time: float) -> dict:
+    """
+    Function to trim a video between specified start and end times.
+    """
+    return {
+        "action": "trim_video",
+        "parameters": {
+            "start_time": start_time,
+            "end_time": end_time
+        }
+    }
 
 # Add conversation history storage
 conversation_history = []
@@ -71,7 +83,6 @@ def gpt_frame_desc(base64_image):
                     }
                 }
             ]}
-
     ]
 
     response = client.chat.completions.create(
@@ -362,7 +373,16 @@ def continue_task(task_id, clip_contexts):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=formatted_messages,
-        functions=[AVAILABLE_FUNCTIONS['cutClip'], AVAILABLE_FUNCTIONS['moveClip'], AVAILABLE_FUNCTIONS['adjustBrightness'], AVAILABLE_FUNCTIONS['trim_video'], AVAILABLE_FUNCTIONS['deleteClip']],
+        functions=[AVAILABLE_FUNCTIONS['cutClip'], 
+                       AVAILABLE_FUNCTIONS['moveClip'], 
+                       AVAILABLE_FUNCTIONS['adjustBrightness'], 
+                       AVAILABLE_FUNCTIONS['trim_video'], 
+                       AVAILABLE_FUNCTIONS['deleteClip'],
+                       AVAILABLE_FUNCTIONS['convertToGrayscale'],
+                       AVAILABLE_FUNCTIONS['applyColorGrading'],
+                       AVAILABLE_FUNCTIONS['adjustSaturation'],
+                       AVAILABLE_FUNCTIONS['addBlurEffect'],
+                       ],
         function_call="auto",
     )
     assistant_message = response.choices[0].message
