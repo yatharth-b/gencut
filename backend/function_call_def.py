@@ -201,5 +201,41 @@ AVAILABLE_FUNCTIONS = {
             },
             "required": ["clipId", "blurStrength"]
         }
+    },
+    "applyFadeIn": {
+        "name": "applyFadeIn", 
+        "description": "If two consecutive frames change by a lot and a transition is necessary, apply a fade in for the specified duration.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip at the end of which we will add the fade in"
+                },
+                "duration": {
+                    "type": "number",
+                    "description": "Duration of the fade"
+                }
+            },
+            "required": ["clipId", "duration"]
+        }
+    },
+    "applyFadeOut": {
+        "name": "applyFadeOut", 
+        "description": "If two consecutive frames change by a lot and a transition is necessary, apply a fade out for the specified duration, after a fade in.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip at the beginning of which we will add the fade out"
+                },
+                "duration": {
+                    "type": "number",
+                    "description": "Duration of the fade"
+                }
+            },
+            "required": ["clipId", "duration"]
+        }
     }
 }

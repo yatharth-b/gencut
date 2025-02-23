@@ -6,7 +6,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
-import { addBlurEffect, adjustBrightness, adjustSaturation, applyColorGrading, convertToGrayscale, trimVideo } from "./utils";
+import { addBlurEffect, adjustBrightness, adjustSaturation, applyColorGrading, applyFadeIn, applyFadeOut, convertToGrayscale, trimVideo } from "./utils";
 
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
@@ -594,6 +594,38 @@ export default function Home() {
                             : clip
                     )
                 ));
+            }
+
+            if (responseData.function_name === "appleFadeIn") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                const newMediaId = await applyFadeIn(selectedMedia.file, functionArgs.duration, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId 
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+                }
+            }
+
+            if (responseData.function_name === "applyFadeOut") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                const newMediaId = await applyFadeOut(selectedMedia.file, functionArgs.duration, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId 
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+                }
             }
 
             clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
