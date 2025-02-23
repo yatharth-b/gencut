@@ -434,130 +434,131 @@ export default function Home() {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
 
     try {
+        let clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
 
-      let clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
+        // Filter out card and function call messages before sending
+        const messagesToSend = prevMessages.filter(msg => msg.role !== 'card');
 
-      let response = await fetch("http://localhost:5050/api/chatv2", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json", // Ensure the server knows we're sending JSON
-        },
-        body: JSON.stringify({
-          messages: [...prevMessages, { role: 'user', content: userMessage }],
-          clipContexts: clipContexts,
-          type: "new_chat",
-        }),
-      });
-
-
-      let responseData = await response.json(); // Decode the response
-      console.log('first response')
-      console.log(responseData)
-      let task_id = responseData.task_id;
-
-
-      while (responseData.type == "function_call") {
-        if (responseData.function_name === "cutClip") {
-          const functionArgs = JSON.parse(responseData.function_args);
-          cutClip(functionArgs.clipId, functionArgs.cutPoint);
-        }
-
-        if (responseData.function_name === "moveClip") {
-          const functionArgs = JSON.parse(responseData.function_args);
-          moveClip(functionArgs.clipId, functionArgs.start);
-        }
-
-        if (responseData.function_name === "deleteClip") {
-          const functionArgs = JSON.parse(responseData.function_args);
-          deleteClip(functionArgs.clipId);
-        }
-
-        if (responseData.function_name === "adjustBrightness") {
-          const functionArgs = JSON.parse(responseData.function_args);
-          const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
-          const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
-          if (videoUrl) {
-            const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-            const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
-            // Update the clip to point to the new media
-            setTimelineTracks(prev => prev.map(track => 
-              track.map(clip => 
-                clip.id === functionArgs.clipId 
-                  ? {...clip, mediaId: newMediaId}
-                  : clip
-              )
-            ));
-          }
-        }
-
-        if (responseData.function_name === "trim_video") {
-          const functionArgs = JSON.parse(responseData.function_args);
-          const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
-          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          if (!selectedMedia) {
-            console.error('Media not found for clip');
-            return;
-          }
-          const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
-          // Update the clip to point to the new media
-          setTimelineTracks(prev => prev.map(track => 
-            track.map(clip => 
-              clip.id === functionArgs.clipId 
-                ? {...clip, mediaId: newMediaId}
-                : clip
-            )
-          ));
-        }
-
-        clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
-
-        response = await fetch("http://localhost:5050/api/chatv2", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json", // Ensure the server knows we're sending JSON
-          },
-          body: JSON.stringify({
-            messages: [
-              ...prevMessages,
-              {
-                role: "user",
-                content: userMessage,
-              },
-            ],
-            clipContexts: clipContexts,
-            type: "continue_task",
-            task_id: task_id,
-          }),
+        let response = await fetch("http://localhost:5050/api/chatv2", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                messages: [...messagesToSend, { role: 'user', content: userMessage }],
+                clipContexts: clipContexts,
+                type: "new_chat",
+            }),
         });
 
-        responseData = await response.json();
-        console.log(responseData)
-      }
+        let responseData = await response.json();
+        let task_id = responseData.task_id;
 
+        while (responseData.type == "function_call") {
+            const functionArgs = JSON.parse(responseData.function_args);
+            
+            // Add function call message to chat history
+            setMessages(prev => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: `Executing function: ${responseData.function_name} with args: ${JSON.stringify(functionArgs)}`,
+                },
+                {
+                  role: 'card',
+                  function: `${responseData.function_name}`,
+                  arguments: `${JSON.stringify(functionArgs)}`
+              }
+            ]);
 
-      if (responseData.type == 'message') {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: responseData.message,
-          },
-        ]);
-      }
+            // Call the respective function based on the function name
+            if (responseData.function_name === "cutClip") {
+                cutClip(functionArgs.clipId, functionArgs.cutPoint);
+            }
 
-      setIsChatLoading(false);
+            if (responseData.function_name === "moveClip") {
+                moveClip(functionArgs.clipId, functionArgs.start);
+            }
+
+            if (responseData.function_name === "deleteClip") {
+                deleteClip(functionArgs.clipId);
+            }
+
+            if (responseData.function_name === "adjustBrightness") {
+                const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+                const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
+                if (videoUrl) {
+                    const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                    const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
+                    // Update the clip to point to the new media
+                    setTimelineTracks(prev => prev.map(track => 
+                        track.map(clip => 
+                            clip.id === functionArgs.clipId 
+                                ? {...clip, mediaId: newMediaId}
+                                : clip
+                        )
+                    ));
+                }
+            }
+
+            if (responseData.function_name === "trim_video") {
+                const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                if (!selectedMedia) {
+                    console.error('Media not found for clip');
+                    return;
+                }
+                const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                        clip.id === functionArgs.clipId 
+                            ? {...clip, mediaId: newMediaId}
+                            : clip
+                    )
+                ));
+            }
+
+            clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
+
+            response = await fetch("http://localhost:5050/api/chatv2", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    messages: messagesToSend,
+                    clipContexts: clipContexts,
+                    type: "continue_task",
+                    task_id: task_id,
+                }),
+            });
+
+            responseData = await response.json();
+        }
+
+        if (responseData.type == 'message') {
+            setMessages((prev) => [
+                ...prev,
+                {
+                    role: "assistant",
+                    content: responseData.message,
+                },
+            ]);
+        }
+
+        setIsChatLoading(false);
 
     } catch (error) {
-      console.error("Error sending message:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant", 
-          role: "assistant", 
-          content: "Sorry, I encountered an error processing your request.",
-          type: "error",
-        },
-      ]);
+        console.error("Error sending message:", error);
+        setMessages((prev) => [
+            ...prev,
+            {
+                role: "assistant",
+                content: "Sorry, I encountered an error processing your request.",
+                type: "error",
+            },
+        ]);
     }
   };
 
@@ -735,24 +736,37 @@ export default function Home() {
               ref={chatContainerRef}
               className="h-[300px] overflow-y-auto p-4 space-y-4 [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:bg-[#30363D] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
             >
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex flex-col ${
-                    message.role === "user" ? "items-end" : "items-start"
-                  }`}
-                >
+              {messages.map((message, index) => {
+                if (message.role === "card") {
+                  return (
+                    <div key={index} className="bg-[#21262D] rounded-md p-2 text-sm border border-[#30363D]">
+                      <div className="font-medium text-[#c9d1d9]">
+                        {message.function}
+                      </div>
+                      <div className="text-xs text-[#8b949e] mt-1">
+                        Arguments: {message.arguments}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
                   <div
-                    className={`rounded-lg p-3 text-sm max-w-[80%] ${
-                      message.role === "user"
-                        ? "bg-[#238636] text-white"
-                        : "bg-[#21262D] text-[#c9d1d9]"
-                    }`}
+                    key={index}
+                    className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}
                   >
-                    {message.content}
+                    <div
+                      className={`rounded-lg p-3 text-sm max-w-[80%] ${
+                        message.role === "user"
+                          ? "bg-[#238636] text-white"
+                          : "bg-[#21262D] text-[#c9d1d9]"
+                      }`}
+                    >
+                      {message.content}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {isChatLoading && (
                 <div className="flex items-start">
                   <div className="bg-[#21262D] rounded-lg p-3 text-sm text-[#c9d1d9]">
