@@ -10,21 +10,6 @@ const ffmpeg = createFFmpeg({
     corePath: "https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js",
 });
 
-let ffmpegLoaded = false;
-const loadFFmpeg = async () => {
-    if (!ffmpegLoaded) {
-        try {
-            await ffmpeg.load();
-            ffmpegLoaded = true;
-            console.log('FFmpeg is ready!');
-        } catch (error) {
-            console.error('Failed to load FFmpeg:', error);
-            throw error;
-        }
-    }
-    return ffmpeg;
-};
-
 export default function VideoPlayer({
   videoRef,
   currentClip,
@@ -36,7 +21,6 @@ export default function VideoPlayer({
   setCurrentTime,
   selectedClipInfo,
   loading,
-  setLoading,
   timelineTracks,
   setTimelineTracks,
   setSelectedClipInfo,
@@ -47,11 +31,6 @@ export default function VideoPlayer({
   ffmpeg,
   fetchFile
 }) {
-    
-    useEffect(() => {
-        loadFFmpeg().catch(console.error);
-    }, []);
-    
     const formatTime = (time) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
