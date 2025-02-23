@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 import atexit
 import json
 from function_call_def import AVAILABLE_TASK_FUNCTIONS, AVAILABLE_FUNCTIONS
+from google import genai
 
 # Load environment variables
 load_dotenv()
@@ -33,6 +34,7 @@ with app.app_context():
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+gemini_client = OpenAI(api_key=os.getenv('GEMINI_API_KEY'), base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
 # # Define the available functions
 # def trim_video(start_time: float, end_time: float) -> dict:
@@ -75,7 +77,7 @@ def gpt_frame_desc(base64_image):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=messages,
-        max_tokens=500
+        max_tokens=100
     )
 
     return response.choices[0].message.content
@@ -168,11 +170,8 @@ def preprocess():
         video_path = os.path.join(video_temp_dir, f"{secure_filename(video_file.name)}")
         video_file.save(video_path)
 
-        future_image_desc = executor.submit(preprocess_image, video_duration, video_path)
-        future_transcription = executor.submit(get_transcript, video_path)
-        
-        image_desc, attrs = future_image_desc.result()
-        transcription = future_transcription.result()
+        image_desc, attrs = preprocess_image(video_duration, video_path)
+        transcription = get_transcript(video_path)
 
         os.remove(video_path)
         os.rmdir(video_temp_dir)
@@ -203,7 +202,7 @@ def request_for_plan(clip_contexts, messages):
     # Prepare the messages to send to GPT
     formatted_messages = [{
         "role": "system",
-        "content": f"You are the planner of an ai agent for video editing. You will be giving tasks to an editor. {AVAILABLE_TASK_FUNCTIONS['create_task']['description']}"
+        "content": f"You are the planner of an ai agent for video editing. You will be giving tasks to an editor. {AVAILABLE_TASK_FUNCTIONS['create_task']['description']}. IF YOU WANT TO REPLY TO THE USER START YOUR MESSAGE WITH 'MESSAGE'. IF YOU WANT TO SEND STEPS, START YOUR MESSAGE WITH 'STEPS'. YOU SHOULD REPLY ONLY WITH EACH STEP ON A DIFFERENT LINE AND NOTHING ELSE. "
     }]
 
     for msg in messages:
@@ -214,48 +213,65 @@ def request_for_plan(clip_contexts, messages):
 
     formatted_messages.append({
         "role": "user",
-        "content": f"here is the context for all my videos: {'-------------------------------------'.join(clip_contexts)}"
+        "content": f"here is the context for all my videos: {clip_contexts}"
     })
 
+    print(formatted_messages)
+
+    # # Call GPT (with function_call enabled)
+    # response = client.chat.completions.create(
+    #     model="gpt-4o",
+    #     messages=formatted_messages,
+    #     functions=[AVAILABLE_TASK_FUNCTIONS["create_task"]],
+    #     function_call="auto",
+    # )
+
     # Call GPT (with function_call enabled)
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=formatted_messages,
-        functions=[AVAILABLE_TASK_FUNCTIONS["create_task"]],
-        function_call="auto",
+    response = gemini_client.chat.completions.create(
+        model="gemini-2.0-flash-thinking-exp",
+        messages=formatted_messages
     )
 
     print(response)
 
     response = response.choices[0].message
 
-    if hasattr(response, 'function_call') and response.function_call:
-        func_call = response.function_call
-        function_name = func_call.name
-        function_args_str = func_call.arguments  # This is typically a JSON string
-        print(f"name  : {function_name}, args : {function_args_str}")
-        try:
-            args = json.loads(function_args_str)
-        except Exception as e:
-            logger.error(f"Failed to parse function arguments: {e}")
-            args = {}
+    if response.content.startswith("MESSAGE"):
+        clean_message = ' '.join(response.content.split(' ')[1:])
+        return jsonify({
+            "type": "message",
+            "message": clean_message
+        })
+    elif response.content.startswith("STEPS"):
+        clean_steps = response.content.split('\n')[1:]
+        global task_id
+        task_id += 1
 
-        logger.info(f"Function call received: {function_name} with arguments: {args}")
+        return create_task(task_id, clean_steps, clip_contexts)
 
-        # Execute the appropriate function based on the function call from GPT
-        if function_name == "create_task":
-            steps = args.get('steps', [])
+    # if hasattr(response, 'function_call') and response.function_call:
+    #     func_call = response.function_call
+    #     function_name = func_call.name
+    #     function_args_str = func_call.arguments  # This is typically a JSON string
+    #     print(f"name  : {function_name}, args : {function_args_str}")
+    #     try:
+    #         args = json.loads(function_args_str)
+    #     except Exception as e:
+    #         logger.error(f"Failed to parse function arguments: {e}")
+    #         args = {}
 
-            global task_id
-            task_id += 1
+    #     logger.info(f"Function call received: {function_name} with arguments: {args}")
 
-            return create_task(task_id, steps, clip_contexts)
+    #     # Execute the appropriate function based on the function call from GPT
+    #     if function_name == "create_task":
+    #         steps = args.get('steps', [])
 
-    return jsonify({
-        "type": "message",
-        "message": response.content
-    })
+    #         global task_id
+    #         task_id += 1
 
+    #         return create_task(task_id, steps, clip_contexts)
+
+    
 
 @app.route('/api/chatv2', methods=['POST'])
 def reasoning_chat():
@@ -263,13 +279,12 @@ def reasoning_chat():
 
         data = request.get_json()
         request_type = data['type']
+        clip_contexts = prepare_context(data.get('clipContexts', []))
         if request_type == 'new_chat':
-            clip_contexts = data.get('clipContexts', [])
             messages = data.get('messages', [])
             return request_for_plan(clip_contexts, messages)
         elif request_type == 'continue_task':
           task_id = data['task_id']
-          clip_contexts = data.get('clipContexts', [])
           return continue_task(task_id, clip_contexts)
 
     except Exception as e:
@@ -288,12 +303,24 @@ def create_task(task_id, steps, clip_contexts):
     tasks[task_id] = task
     return continue_task(task_id, clip_contexts)
 
+def prepare_context(contexts):
+    annotated_context = []
+    for context in contexts:
+        annotations = {
+            "imageDescriptions": [f"second {i + 1}: {desc}" for i, desc in enumerate(context.get("imageDescriptions", []))],
+            "imageAttributes": [f"second {i + 1}: {attr}" for i, attr in enumerate(context.get("imageAttributes", []))],
+            "transcription": [f"second {i + 1}: {trans}" for i, trans in enumerate(context.get("transcription", []))],
+            "mediaId": context.get("mediaId", "unknown"),
+            "duration": context.get("duration", 0),
+            "start": context.get("start", 0),
+            "clip_id": context.get("clip_id", "unknown")  # Added clip id
+        }
+        annotated_context.append(annotations)
+
+    return str(annotated_context)
+
 def continue_task(task_id, clip_contexts):
     global tasks
-    print('in continue task')
-    print(task_id)
-    print(tasks)
-    print(tasks[task_id])
     
     tasks[task_id]["current_step"] += 1
     curr_step = tasks[task_id]["current_step"] 
@@ -311,7 +338,7 @@ def continue_task(task_id, clip_contexts):
 
     formatted_messages.append({
         "role": "user",
-        "content": f"here is the context for all my videos: {' '.join(clip_contexts)}"
+        "content": f"here is the context for all my videos: {clip_contexts}"
     })
 
     previous_steps = "-------previous steps"

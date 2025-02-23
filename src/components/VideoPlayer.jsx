@@ -195,7 +195,7 @@ export default function VideoPlayer({
 
     console.log(clip)
     // Call the cutClip function to get the new clips
-    cutClip(clip.id, cutPoint);
+    cutClip(clip.clip_id, cutPoint);
     setSelectedClipInfo(null); // Clear the selected clip info
   };
 
@@ -205,14 +205,14 @@ export default function VideoPlayer({
 
     const { clip } = selectedClipInfo;
 
-    deleteClip(clip.id)
+    deleteClip(clip.clip_id)
 
     setSelectedClipInfo(null); // Clear the selected clip info
   };
 
   const deleteClip = (clip_id) => {
     setTimelineTracks((prev) =>
-      [prev[0].filter((c) => c.id !== clip_id)]
+      [prev[0].filter((c) => c.clip_id !== clip_id)]
     );
   }
 

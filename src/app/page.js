@@ -90,12 +90,13 @@ export default function Home() {
       // Calculate drop position
       const timelineRect = timelineRef.current.getBoundingClientRect();
       const dropPosition =
-        ((e.clientX - timelineRect.left) / timelineRect.width) * projectDuration;
+        ((e.clientX - timelineRect.left) / timelineRect.width) *
+        projectDuration;
 
       // Get media and create new clip
       const media = mediaList.find((m) => m.id === draggingMedia.id);
       const newClip = {
-        id: Date.now().toString(),
+        clip_id: Date.now().toString(),
         mediaId: draggingMedia.id,
         start: dropPosition,
         duration: draggingMedia.duration,
@@ -120,7 +121,7 @@ export default function Home() {
 
       setTimelineTracks((prev) => {
         const updatedTrack = prev[0].map((c) =>
-          c.id === clip.id ? { ...clip, start: newStart } : c
+          c.clip_id === clip.clip_id ? { ...clip, start: newStart } : c
         );
         return [updatedTrack.sort((a, b) => a.start - b.start)];
       });
@@ -136,16 +137,19 @@ export default function Home() {
     const { clip } = selectedClipInfo;
 
     setTimelineTracks((prev) => [
-      prev[0].filter((c) => c.id !== clip.id), // Filter out the deleted clip
+      prev[0].filter((c) => c.clip_id !== clip.clip_id), // Filter out the deleted clip
     ]);
 
     setSelectedClipInfo(null); // Clear the selected clip info
   };
 
   const deleteClip = (clip_id) => {
-    setTimelineTracks((prev) =>
-      [prev[0].filter((c) => c.id !== clip_id)]
-    );
+    setTimelineTracks((prev) => [prev[0].filter((c) => c.clip_id !== clip_id)]);
+  };
+
+  const deleteClipGpt = (clip_id, tempTimeline) => {
+    tempTimeline[0] = tempTimeline[0].filter((c) => c.clip_id !== clip_id);
+    return tempTimeline;
   }
 
   const handleMediaDragStart = (media) => {
@@ -195,7 +199,7 @@ export default function Home() {
     // Update the timelineTracks state directly
     setTimelineTracks((prev) => {
       const updatedTrack = prev[0].map((clip) =>
-        clip.id === draggingClip.clip.id ? { ...clip, start: newStart } : clip
+        clip.clip_id === draggingClip.clip.clip_id ? { ...clip, start: newStart } : clip
       );
       return [updatedTrack];
     });
@@ -299,39 +303,79 @@ export default function Home() {
 
   const createMediaCopy = async (originalMediaId) => {
     // Find the original media from mediaList
-    const originalMedia = mediaList.find(m => m.id === originalMediaId);
+    const originalMedia = mediaList.find((m) => m.id === originalMediaId);
     if (!originalMedia) {
-        console.error("Original media not found");
-        return null;
+      console.error("Original media not found");
+      return null;
     }
 
     // Create a deep copy of the original media file and blob
     const originalBlob = originalMedia.file;
     const copiedBlob = new Blob([originalBlob], { type: originalBlob.type });
-    const copiedFile = new File([copiedBlob], `${originalMedia.name}_copy.mp4`, { type: originalBlob.type });
+    const copiedFile = new File(
+      [copiedBlob],
+      `${originalMedia.name}_copy.mp4`,
+      { type: originalBlob.type }
+    );
     const copiedUrl = URL.createObjectURL(copiedBlob);
 
     // Create a deep copy of the media object
     const newMedia = {
-        id: `media-${Date.now()}`,
-        file: copiedFile,
-        url: copiedUrl,
-        name: `${originalMedia.name} for second half`,
-        duration: originalMedia.duration,
-        thumbnails: originalMedia.thumbnails.map(thumb => ({...thumb})), // Deep copy thumbnails
-        loading: false,
-        type: originalMedia.type,
-        hidden: true
+      id: `media-${Date.now()}`,
+      file: copiedFile,
+      url: copiedUrl,
+      name: `${originalMedia.name} for second half`,
+      duration: originalMedia.duration,
+      thumbnails: originalMedia.thumbnails.map((thumb) => ({ ...thumb })), // Deep copy thumbnails
+      loading: false,
+      type: originalMedia.type,
+      hidden: true,
     };
 
     // Add new media to mediaList
-    setMediaList(prev => [...prev, newMedia]);
+    setMediaList((prev) => [...prev, newMedia]);
     return newMedia.id;
   };
 
-  const cutClip = async (clipId, cutPoint) => {
-    console.log(timelineTracks)
-    const clipToCut = timelineTracks[0].find(c => c.id === clipId);
+  const createMediaCopyGpt = async (originalMediaId, tempMediaList) => {
+    // Find the original media from mediaList
+    const originalMedia = tempMediaList.find((m) => m.id === originalMediaId);
+    if (!originalMedia) {
+      console.error("Original media not found");
+      return null;
+    }
+
+    // Create a deep copy of the original media file and blob
+    const originalBlob = originalMedia.file;
+    const copiedBlob = new Blob([originalBlob], { type: originalBlob.type });
+    const copiedFile = new File(
+      [copiedBlob],
+      `${originalMedia.name}_copy.mp4`,
+      { type: originalBlob.type }
+    );
+    const copiedUrl = URL.createObjectURL(copiedBlob);
+
+    // Create a deep copy of the media object
+    const newMedia = {
+      id: `media-${Date.now()}`,
+      file: copiedFile,
+      url: copiedUrl,
+      name: `${originalMedia.name} for second half`,
+      duration: originalMedia.duration,
+      thumbnails: originalMedia.thumbnails.map((thumb) => ({ ...thumb })), // Deep copy thumbnails
+      loading: false,
+      type: originalMedia.type,
+      hidden: true,
+    };
+
+    // Add new media to a temporary array instead of state
+    tempMediaList.push(newMedia);
+    return newMedia.id;
+  };
+
+
+  const cutClipGpt = async (clipId, cutPoint, tempTimeline, tempMediaList) => {
+    const clipToCut = tempTimeline[0].find((c) => c.clip_id === clipId);
     if (!clipToCut) {
       console.error("Clip not found with ID:", clipId);
       return;
@@ -339,7 +383,7 @@ export default function Home() {
 
     // Calculate the first half
     const firstHalf = {
-      id: Date.now().toString(),
+      clip_id: Date.now().toString(),
       mediaId: clipToCut.mediaId,
       start: clipToCut.start,
       duration: cutPoint,
@@ -351,9 +395,56 @@ export default function Home() {
       imageAttributes: clipToCut.imageAttributes.slice(0, Math.ceil(cutPoint)),
       transcription: clipToCut.transcription.slice(0, Math.ceil(cutPoint)),
     };
-    
+
     const secondHalf = {
-      id: (Date.now() + 1).toString(),
+      clip_id: (Date.now() + 1).toString(),
+      mediaId: clipToCut.mediaId,
+      start: clipToCut.start + cutPoint,
+      duration: clipToCut.duration - cutPoint,
+      offset: clipToCut.offset + cutPoint,
+      imageDescriptions: clipToCut.imageDescriptions.slice(Math.ceil(cutPoint)),
+      imageAttributes: clipToCut.imageAttributes.slice(Math.ceil(cutPoint)),
+      transcription: clipToCut.transcription.slice(Math.ceil(cutPoint)),
+    };
+
+    // Create copy and update secondHalf
+    const newMediaId = await createMediaCopyGpt(clipToCut.mediaId, tempMediaList);
+    if (newMediaId) {
+      secondHalf.mediaId = newMediaId;
+    }
+
+    tempTimeline[0] = tempTimeline[0].flatMap((c) =>
+      c.clip_id === clipToCut.clip_id ? [firstHalf, secondHalf] : c
+    );
+    return tempTimeline;
+  };
+
+  const cutClip = async (clipId, cutPoint) => {
+    console.log("timelinetrack");
+    console.log(timelineTracks);
+    const clipToCut = timelineTracks[0].find((c) => c.clip_id === clipId);
+    if (!clipToCut) {
+      console.error("Clip not found with ID:", clipId);
+      return;
+    }
+
+    // Calculate the first half
+    const firstHalf = {
+      clip_id: Date.now().toString(),
+      mediaId: clipToCut.mediaId,
+      start: clipToCut.start,
+      duration: cutPoint,
+      offset: clipToCut.offset,
+      imageDescriptions: clipToCut.imageDescriptions.slice(
+        0,
+        Math.ceil(cutPoint)
+      ),
+      imageAttributes: clipToCut.imageAttributes.slice(0, Math.ceil(cutPoint)),
+      transcription: clipToCut.transcription.slice(0, Math.ceil(cutPoint)),
+    };
+
+    const secondHalf = {
+      clip_id: (Date.now() + 1).toString(),
       mediaId: clipToCut.mediaId,
       start: clipToCut.start + cutPoint,
       duration: clipToCut.duration - cutPoint,
@@ -367,56 +458,59 @@ export default function Home() {
     // Create copy and update secondHalf
     const newMediaId = await createMediaCopy(clipToCut.mediaId);
     if (newMediaId) {
-        secondHalf.mediaId = newMediaId;
+      secondHalf.mediaId = newMediaId;
     }
-
-
 
     // Update the single track directly
     setTimelineTracks((prev) => {
-        const updatedTrack = prev[0].map((c) => {
-            if (c.id === clipToCut.id) {
-                // Replace the cut clip with the two new pieces
-                return [firstHalf, secondHalf];
-            }
-            return [c];
-        }).flat();
+      const updatedTrack = prev[0]
+        .map((c) => {
+          if (c.clip_id === clipToCut.clip_id) {
+            // Replace the cut clip with the two new pieces
+            return [firstHalf, secondHalf];
+          }
+          return [c];
+        })
+        .flat();
 
-        return [updatedTrack]; // Return a new array with the updated track
+      return [updatedTrack]; // Return a new array with the updated track
     });
+
+    let updatedClips = [[...timelineTracks[0]]];
+
+    updatedClips[0] = updatedClips[0].flatMap((c) =>
+      c.clip_id === clipToCut.clip_id ? [firstHalf, secondHalf] : c
+    );
+    return updatedClips;
   };
 
-  const moveClip = (clipId, newStart) => {
+  const moveClip = (clipId, newStart, tempTimeline) => {
     console.log("Move clip", clipId, newStart);
-    const clipToMove = timelineTracks[0].find(c => c.id === clipId);
+    const clipToMove = tempTimeline[0].find((c) => c.clip_id === clipId);
     if (!clipToMove) {
-        console.error("Clip not found with ID:", clipId);
-        return;
+      console.error("Clip not found with ID:", clipId);
+      return;
     }
 
     const newClip = {
-      id: clipToMove.id,
+      clip_id: clipToMove.clip_id,
       mediaId: clipToMove.mediaId,
       start: newStart,
       duration: clipToMove.duration,
-      offset: clipToMove.offset
-    }
+      offset: clipToMove.offset,
+    };
 
     console.log("moveClip", clipToMove, newStart);
     clipToMove.start = newStart;
 
-    // Update the single track directly
-    setTimelineTracks((prev) => {
-      const updatedTrack = prev[0].map((c) => {
-        if (c.id === clipToMove.id) {
-          return newClip;
-        }
-        return c;
-      });
-
-      return [updatedTrack]; // Return a new array with the updated track
+    const updatedTrack = tempTimeline[0].map((c) => {
+      if (c.clip_id === clipToMove.clip_id) {
+        return newClip;
+      }
+      return c;
     });
-  }
+    tempTimeline[0] = updatedTrack; // Directly update the tempTimeline variable
+  };
 
   const handleClipClick = (e, trackIndex, clipIndex, clip) => {
     e.stopPropagation(); // Prevent timeline click
@@ -428,138 +522,187 @@ export default function Home() {
     if (!inputMessage.trim()) return;
 
     const userMessage = inputMessage.trim();
-    setInputMessage('');
+    setInputMessage("");
     setIsChatLoading(true);
 
     let prevMessages = [...messages];
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
 
     try {
-        let clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
+      // Filter out card messages before sending
+      const messagesToSend = prevMessages.filter((msg) => msg.role !== "card");
 
-        // Filter out card and function call messages before sending
-        const messagesToSend = prevMessages.filter(msg => msg.role !== 'card');
+      let response = await fetch("http://localhost:5050/api/chatv2", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [...messagesToSend, { role: "user", content: userMessage }],
+          clipContexts: clipsInRange,
+          type: "new_chat",
+        }),
+      });
 
-        let response = await fetch("http://localhost:5050/api/chatv2", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                messages: [...messagesToSend, { role: 'user', content: userMessage }],
-                clipContexts: clipContexts,
-                type: "new_chat",
-            }),
+      let responseData = await response.json();
+      let task_id = responseData.task_id;
+      let tempTimeline = [...timelineTracks];
+      let tempMediaList = [...mediaList];
+
+      console.log('first response')
+      console.log(responseData)
+
+      while (responseData.type == "function_call") {
+        const functionArgs = JSON.parse(responseData.function_args);
+        // Add function call message to chat history
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `Executing function: ${
+              responseData.function_name
+            } with args: ${JSON.stringify(functionArgs)}`,
+          },
+          {
+            role: "card",
+            function: `${responseData.function_name}`,
+            arguments: `${JSON.stringify(functionArgs)}`,
+          },
+        ]);
+
+        // Call the respective function based on the function name
+        if (responseData.function_name === "cutClip") {
+          tempTimeline = await cutClipGpt(
+            functionArgs.clipId,
+            functionArgs.cutPoint,
+            tempTimeline,
+            tempMediaList
+          );
+        }
+
+        if (responseData.function_name === "moveClip") {
+          moveClip(functionArgs.clipId, functionArgs.start, tempTimeline);
+        }
+
+        if (responseData.function_name === "deleteClip") {
+          tempTimeline = deleteClipGpt(functionArgs.clipId, tempTimeline);
+        }
+
+        if (responseData.function_name === "adjustBrightness") {
+          const selectedClip = timelineTracks[0].find(
+            (clip) => clip.clip_id === functionArgs.clipId
+          );
+          const videoUrl = mediaList.find(
+            (m) => m.id === selectedClip?.mediaId
+          )?.url;
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(
+              (m) => m.id === selectedClip?.mediaId
+            );
+            const newMediaId = await adjustBrightness(
+              selectedMedia.file,
+              functionArgs.brightness,
+              setMediaList
+            );
+            // Update the clip to point to the new media
+            setTimelineTracks((prev) =>
+              prev.map((track) =>
+                track.map((clip) =>
+                  clip.clip_id === functionArgs.clipId
+                    ? { ...clip, mediaId: newMediaId }
+                    : clip
+                )
+              )
+            );
+          }
+        }
+
+        if (responseData.function_name === "trim_video") {
+          const selectedClip = timelineTracks[0].find(
+            (clip) => clip.clip_id === functionArgs.clipId
+          );
+          const selectedMedia = mediaList.find(
+            (m) => m.id === selectedClip?.mediaId
+          );
+          if (!selectedMedia) {
+            console.error("Media not found for clip");
+            return;
+          }
+          const newMediaId = await trimVideo(
+            selectedMedia.file,
+            functionArgs.start_time,
+            functionArgs.end_time,
+            setMediaList
+          );
+          // Update the clip to point to the new media
+          setTimelineTracks((prev) =>
+            prev.map((track) =>
+              track.map((clip) =>
+                clip.clip_id === functionArgs.clipId
+                  ? { ...clip, mediaId: newMediaId }
+                  : clip
+              )
+            )
+          );
+        }
+
+        console.log(`temp timeline`);
+        console.log(tempTimeline);
+
+        const tempClipsInRange = tempTimeline[0]
+          .filter((clip) => {
+            const clipEnd = clip.start + clip.duration;
+            return clip.start <= endCursor && clipEnd >= startCursor;
+          })
+          .map((clip) => ({
+            ...clip,
+            mediaName:
+              mediaList.find((m) => m.id === clip.mediaId)?.name || "Unknown",
+          }));
+          
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        response = await fetch("http://localhost:5050/api/chatv2", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messages: messagesToSend,
+            clipContexts: tempClipsInRange,
+            type: "continue_task",
+            task_id: task_id,
+          }),
         });
 
-        let responseData = await response.json();
-        let task_id = responseData.task_id;
+        responseData = await response.json();
+        console.log('received response');
+        console.log(responseData);
+      }
 
-        while (responseData.type == "function_call") {
-            const functionArgs = JSON.parse(responseData.function_args);
-            
-            // Add function call message to chat history
-            setMessages(prev => [
-                ...prev,
-                {
-                    role: 'assistant',
-                    content: `Executing function: ${responseData.function_name} with args: ${JSON.stringify(functionArgs)}`,
-                },
-                {
-                  role: 'card',
-                  function: `${responseData.function_name}`,
-                  arguments: `${JSON.stringify(functionArgs)}`
-              }
-            ]);
+      setTimelineTracks(JSON.parse(JSON.stringify(tempTimeline)));
+      setMediaList(JSON.parse(JSON.stringify(tempMediaList)));
 
-            // Call the respective function based on the function name
-            if (responseData.function_name === "cutClip") {
-                cutClip(functionArgs.clipId, functionArgs.cutPoint);
-            }
-
-            if (responseData.function_name === "moveClip") {
-                moveClip(functionArgs.clipId, functionArgs.start);
-            }
-
-            if (responseData.function_name === "deleteClip") {
-                deleteClip(functionArgs.clipId);
-            }
-
-            if (responseData.function_name === "adjustBrightness") {
-                const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
-                const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
-                if (videoUrl) {
-                    const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                    const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
-                    // Update the clip to point to the new media
-                    setTimelineTracks(prev => prev.map(track => 
-                        track.map(clip => 
-                            clip.id === functionArgs.clipId 
-                                ? {...clip, mediaId: newMediaId}
-                                : clip
-                        )
-                    ));
-                }
-            }
-
-            if (responseData.function_name === "trim_video") {
-                const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
-                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-                if (!selectedMedia) {
-                    console.error('Media not found for clip');
-                    return;
-                }
-                const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
-                // Update the clip to point to the new media
-                setTimelineTracks(prev => prev.map(track => 
-                    track.map(clip => 
-                        clip.id === functionArgs.clipId 
-                            ? {...clip, mediaId: newMediaId}
-                            : clip
-                    )
-                ));
-            }
-
-            clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
-
-            response = await fetch("http://localhost:5050/api/chatv2", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    messages: messagesToSend,
-                    clipContexts: clipContexts,
-                    type: "continue_task",
-                    task_id: task_id,
-                }),
-            });
-
-            responseData = await response.json();
-        }
-
-        if (responseData.type == 'message') {
-            setMessages((prev) => [
-                ...prev,
-                {
-                    role: "assistant",
-                    content: responseData.message,
-                },
-            ]);
-        }
-
-        setIsChatLoading(false);
-
-    } catch (error) {
-        console.error("Error sending message:", error);
+      if (responseData.type == "message") {
         setMessages((prev) => [
-            ...prev,
-            {
-                role: "assistant",
-                content: "Sorry, I encountered an error processing your request.",
-                type: "error",
-            },
+          ...prev,
+          {
+            role: "assistant",
+            content: responseData.message,
+          },
         ]);
+      }
+
+      setIsChatLoading(false);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, I encountered an error processing your request.",
+          type: "error",
+        },
+      ]);
     }
   };
 
@@ -721,7 +864,7 @@ export default function Home() {
                 ) : (
                   clipsInRange.map((clip, index) => (
                     <div
-                      key={clip.id}
+                      key={clip.clip_id}
                       className="bg-[#21262D] rounded-md p-2 text-sm border border-[#30363D]"
                     >
                       <div className="font-medium text-[#c9d1d9]">
@@ -745,7 +888,10 @@ export default function Home() {
               {messages.map((message, index) => {
                 if (message.role === "card") {
                   return (
-                    <div key={index} className="bg-[#21262D] rounded-md p-2 text-sm border border-[#30363D]">
+                    <div
+                      key={index}
+                      className="bg-[#21262D] rounded-md p-2 text-sm border border-[#30363D]"
+                    >
                       <div className="font-medium text-[#c9d1d9]">
                         {message.function}
                       </div>
@@ -759,7 +905,9 @@ export default function Home() {
                 return (
                   <div
                     key={index}
-                    className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}
+                    className={`flex flex-col ${
+                      message.role === "user" ? "items-end" : "items-start"
+                    }`}
                   >
                     <div
                       className={`rounded-lg p-3 text-sm max-w-[80%] ${
@@ -916,12 +1064,12 @@ export default function Home() {
                 const media = mediaList.find((m) => m.id === clip.mediaId);
                 return (
                   <div
-                    key={clip.id}
+                    key={clip.clip_id}
                     onMouseDown={(e) => handleClipMouseDown(e, 0, clipIndex)}
                     onClick={(e) => handleClipClick(e, 0, clipIndex, clip)}
                     className={`absolute top-0 h-full cursor-move overflow-hidden border transition-colors
                       ${
-                        selectedClipInfo?.clip.id === clip.id
+                        selectedClipInfo?.clip.clip_id === clip.clip_id
                           ? "bg-[#1f6feb] border-[#58a6ff]"
                           : "bg-[#21262D] border-[#30363D] hover:bg-[#30363D]"
                       }`}
