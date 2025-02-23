@@ -81,7 +81,7 @@ AVAILABLE_FUNCTIONS = {
     }, 
     "adjustBrightness": {
         "name": "adjustBrightness", 
-        "description": "Adjust the brightness level of a video. Evaluate the frames and think about what the best brightness level is for each part of the video. Give me the exact brightness level for the entire video needed.",
+        "description": "Adjust the brightness level of a video. Evaluate the frames and think about what the best brightness level is for each part of the video. Give me the exact brightness level for the entire video needed.Range between 0 and 1 as a decimal.",
         "parameters": {
             "type": "object",
             "properties": {

@@ -56,6 +56,7 @@ export default function MediaList({
     try {
       setLoading(true);
       const url = URL.createObjectURL(file);
+      console.log("file type: ", file.type);
       const newMedia = {
         id: Date.now(),
         file,
@@ -64,15 +65,11 @@ export default function MediaList({
         duration: 0,
         thumbnails: [],
         loading: true,
-        imageDescriptions: [],
-        imageAttributes: [],
-        transcription: []
       };
 
       const formData = new FormData();
       formData.append("video", file);
-      formData.append("duration", newMedia.duration.toString());
-
+      // Get video duration
       const video = document.createElement("video");
       video.src = url;
       await new Promise((resolve, reject) => {
@@ -94,19 +91,12 @@ export default function MediaList({
       const data = await response.json();
       console.log('Preprocessed data:', data);
 
+      // Generate thumbnails
       const thumbnails = await generateThumbnails(file, newMedia.duration);
 
+      // Update media with thumbnails
       setMediaList((prev) =>
-        prev.map((m) => 
-          m.id === newMedia.id ? { 
-            ...m, 
-            thumbnails,
-            loading: false,
-            imageDescriptions: data.image_description,
-            imageAttributes: data.image_attr,
-            transcription: data.transcription
-          } : m
-        )
+        prev.map((m) => (m.id === newMedia.id ? { ...m, thumbnails, loading: false } : m))
       );
     } catch (error) {
       console.error("Error uploading video:", error);
@@ -126,15 +116,17 @@ export default function MediaList({
     const thumbnails = [];
 
     try {
+      // Write the input file
       ffmpeg.FS("writeFile", "input.mp4", await fetchFile(file));
 
-      const interval = Math.max(1, Math.floor(duration / 10));
+      const interval = Math.max(1, Math.floor(duration / 10)); // Generate 10 thumbnails
       const totalThumbnails = Math.min(10, Math.floor(duration));
 
       for (let i = 0; i < totalThumbnails; i++) {
         const time = i * interval;
         const outputName = `thumb_${i}.jpg`;
 
+        // Generate thumbnail
         await ffmpeg.run(
           "-ss",
           time.toString(),
@@ -147,15 +139,18 @@ export default function MediaList({
           outputName
         );
 
+        // Read and create thumbnail URL
         const data = ffmpeg.FS("readFile", outputName);
         const thumbnail = URL.createObjectURL(
           new Blob([data.buffer], { type: "image/jpeg" })
         );
         thumbnails.push({ time, url: thumbnail });
 
+        // Clean up the thumbnail file
         ffmpeg.FS("unlink", outputName);
       }
 
+      // Clean up input file
       ffmpeg.FS("unlink", "input.mp4");
 
       return thumbnails;
@@ -185,7 +180,7 @@ export default function MediaList({
             <div className="w-32 h-20 bg-black rounded overflow-hidden flex-shrink-0">
               {media.loading ? (
                 <div className="flex items-center justify-center w-full h-full">
-                  <span className="text-white">Loading...</span>
+                  <span className="text-white">Loading...</span> {/* Display loading text */}
                 </div>
               ) : (
                 media.thumbnails[0] && (
@@ -207,7 +202,7 @@ export default function MediaList({
                 </div>
                 <div className="text-xs text-[#8b949e] mt-1">
                   {Math.round(media.duration)} seconds •{" "}
-                  {formatFileSize(media.file.size)}
+                  {formatFileSize(media.size)}
                 </div>
               </div>
 

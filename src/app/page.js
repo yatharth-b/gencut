@@ -8,6 +8,7 @@ import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
 import { adjustBrightness } from "./utils";
 
+
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
 
@@ -86,9 +87,8 @@ export default function Home() {
     if (draggingMedia) {
       // Calculate drop position
       const timelineRect = timelineRef.current.getBoundingClientRect();
-  const dropPosition =
-        ((e.clientX - timelineRect.left) / timelineRect.width) *
-        projectDuration;
+      const dropPosition =
+        ((e.clientX - timelineRect.left) / timelineRect.width) * projectDuration;
 
       // Get media and create new clip
       const media = mediaList.find((m) => m.id === draggingMedia.id);
@@ -287,11 +287,39 @@ export default function Home() {
     setDraggingClip(null);
   };
 
-  const cutClip = (clipId, cutPoint) => {
+  const createMediaCopy = async (originalMediaId) => {
+    // Find the original media from mediaList
+    const originalMedia = mediaList.find(m => m.id === originalMediaId);
+    if (!originalMedia) {
+        console.error("Original media not found");
+        return null;
+    }
+
+    // Create a deep copy of the original media file and blob
+    const originalBlob = originalMedia.file;
+    const copiedBlob = new Blob([originalBlob], { type: originalBlob.type });
+    const copiedFile = new File([copiedBlob], `${originalMedia.name}_copy.mp4`, { type: originalBlob.type });
+    const copiedUrl = URL.createObjectURL(copiedBlob);
+
+    // Create a deep copy of the media object
+    const newMedia = {
+        id: `media-${Date.now()}`,
+        file: copiedFile,
+        url: copiedUrl,
+        name: `${originalMedia.name} (Copy)`,
+        duration: originalMedia.duration,
+        thumbnails: originalMedia.thumbnails.map(thumb => ({...thumb})), // Deep copy thumbnails
+        loading: false,
+        type: originalMedia.type
+    };
+
+    // Add new media to mediaList
+    setMediaList(prev => [...prev, newMedia]);
+    return newMedia.id;
+};
+  const cutClip = async (clipId, cutPoint) => {
     console.log(timelineTracks)
     const clipToCut = timelineTracks[0].find(c => c.id === clipId);
-    console.log('cliptocut')
-    console.log(clipToCut)
     if (!clipToCut) {
         console.error("Clip not found with ID:", clipId);
         return;
@@ -304,7 +332,7 @@ export default function Home() {
       duration: cutPoint - clipToCut.start,
       offset: clipToCut.offset,
     };
-
+    
     const secondHalf = {
       id: (Date.now() + 1).toString(),
       mediaId: clipToCut.mediaId,
@@ -312,6 +340,16 @@ export default function Home() {
       duration: clipToCut.start + clipToCut.duration - cutPoint,
       offset: clipToCut.offset + (cutPoint - clipToCut.start),
     };
+
+    // Create copy and update secondHalf
+    const newMediaId = await createMediaCopy(clipToCut.mediaId);
+    if (newMediaId) {
+        secondHalf.mediaId = newMediaId;
+    }
+
+
+
+
 
     // Update the single track directly
     setTimelineTracks((prev) => {
@@ -400,23 +438,16 @@ export default function Home() {
         const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
         console.log(videoUrl)
         if (videoUrl) {
-          fetch(videoUrl)
-            .then(response => response.blob())
-            .then(async blob => {
-              const newMediaId = await adjustBrightness({
-                ...blob, 
-                clipId: functionArgs.clipId
-              }, functionArgs.brightness, setMediaList);
-              
-              // Update the clip to point to the new media
-              setTimelineTracks(prev => prev.map(track => 
-                track.map(clip => 
-                  clip.id === functionArgs.clipId 
-                    ? {...clip, mediaId: newMediaId}
-                    : clip
-                )
-              ));
-            });
+          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+          const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
+          // Update the clip to point to the new media
+          setTimelineTracks(prev => prev.map(track => 
+            track.map(clip => 
+              clip.id === functionArgs.clipId 
+                ? {...clip, mediaId: newMediaId}
+                : clip
+            )
+          ));
         }
       }
 
@@ -425,7 +456,7 @@ export default function Home() {
       setMessages((prev) => [
         ...prev,
         {
-          role: "assistant",
+          role: "assistant", 
           content: "Sorry, I encountered an error processing your request.",
           type: "error",
         },
