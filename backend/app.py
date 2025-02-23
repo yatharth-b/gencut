@@ -34,18 +34,18 @@ with app.app_context():
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-# Define the available functions
-def trim_video(start_time: float, end_time: float) -> dict:
-    """
-    Function to trim a video between specified start and end times.
-    """
-    return {
-        "action": "trim_video",
-        "parameters": {
-            "start_time": start_time,
-            "end_time": end_time
-        }
-    }
+# # Define the available functions
+# def trim_video(start_time: float, end_time: float) -> dict:
+#     """
+#     Function to trim a video between specified start and end times.
+#     """
+#     return {
+#         "action": "trim_video",
+#         "parameters": {
+#             "start_time": start_time,
+#             "end_time": end_time
+#         }
+#     }
 
 
 # Add conversation history storage

@@ -6,7 +6,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
-import { adjustBrightness } from "./utils";
+import { adjustBrightness, trimVideo } from "./utils";
 
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
@@ -421,21 +421,14 @@ export default function Home() {
     if (!inputMessage.trim()) return;
 
     const userMessage = inputMessage.trim();
-    setInputMessage("");
+    setInputMessage('');
     setIsChatLoading(true);
 
     let prevMessages = [...messages];
-
-    // Add user message to chat
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: userMessage,
-      },
-    ]);
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
 
     try {
+
       let clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
 
       let response = await fetch("http://localhost:5050/api/chatv2", {
@@ -444,22 +437,18 @@ export default function Home() {
           "Content-Type": "application/json", // Ensure the server knows we're sending JSON
         },
         body: JSON.stringify({
-          messages: [
-            ...prevMessages,
-            {
-              role: "user",
-              content: userMessage,
-            },
-          ],
+          messages: [...prevMessages, { role: 'user', content: userMessage }],
           clipContexts: clipContexts,
           type: "new_chat",
         }),
       });
 
+
       let responseData = await response.json(); // Decode the response
       console.log('first response')
       console.log(responseData)
       let task_id = responseData.task_id;
+
 
       while (responseData.type == "function_call") {
         if (responseData.function_name === "cutClip") {
@@ -520,6 +509,7 @@ export default function Home() {
         console.log(responseData)
       }
 
+
       if (responseData.type == 'message') {
         setMessages((prev) => [
           ...prev,
@@ -528,6 +518,31 @@ export default function Home() {
             content: responseData.message,
           },
         ]);
+
+      else if (data.function_name === "trim_video") {
+        const functionArgs = JSON.parse(data.function_args);
+        const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+        const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+        if (!selectedMedia) {
+          console.error('Media not found for clip');
+          return;
+        }
+        const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
+        // Update the clip to point to the new media
+        setTimelineTracks(prev => prev.map(track => 
+          track.map(clip => 
+            clip.id === functionArgs.clipId 
+              ? {...clip, mediaId: newMediaId}
+              : clip
+          )
+        ));
+      }
+      // If it's a function call to rearrange the clips
+      if (data.function_name === "moveClip") {
+        const functionArgs = JSON.parse(data.function_args);
+        console.log(functionArgs)
+        moveClip(functionArgs.clipId, functionArgs.start);
+
       }
 
       setIsChatLoading(false);
