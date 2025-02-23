@@ -316,11 +316,12 @@ export default function Home() {
         id: `media-${Date.now()}`,
         file: copiedFile,
         url: copiedUrl,
-        name: `${originalMedia.name} (Copy)`,
+        name: `${originalMedia.name} for second half`,
         duration: originalMedia.duration,
         thumbnails: originalMedia.thumbnails.map(thumb => ({...thumb})), // Deep copy thumbnails
         loading: false,
-        type: originalMedia.type
+        type: originalMedia.type,
+        hidden: true
     };
 
     // Add new media to mediaList
