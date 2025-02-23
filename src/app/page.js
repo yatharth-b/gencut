@@ -8,6 +8,8 @@ import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
 import { adjustBrightness } from "./utils";
 
+import { adjustBrightness } from "./utils";
+
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -382,6 +384,16 @@ export default function Home() {
         imageAttributes: clipToCut.imageAttributes.slice(Math.ceil(cutPoint)),
         transcription: clipToCut.transcription.slice(Math.ceil(cutPoint)),
     };
+
+    // Create copy and update secondHalf
+    const newMediaId = await createMediaCopy(clipToCut.mediaId);
+    if (newMediaId) {
+        secondHalf.mediaId = newMediaId;
+    }
+
+
+
+
 
     // Create copy and update secondHalf
     const newMediaId = await createMediaCopy(clipToCut.mediaId);
