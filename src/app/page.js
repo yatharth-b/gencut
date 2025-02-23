@@ -477,6 +477,24 @@ export default function Home() {
           moveClip(functionArgs.clipId);
         }
 
+        if (responseData.function_name === "adjustBrightness") {
+          const functionArgs = JSON.parse(responseData.function_args);
+          const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+          const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
+          if (videoUrl) {
+            const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+            const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
+            // Update the clip to point to the new media
+            setTimelineTracks(prev => prev.map(track => 
+              track.map(clip => 
+                clip.id === functionArgs.clipId 
+                  ? {...clip, mediaId: newMediaId}
+                  : clip
+              )
+            ));
+          }
+        }
+
         clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
 
         response = await fetch("http://localhost:5050/api/chatv2", {
@@ -500,27 +518,6 @@ export default function Home() {
 
         responseData = await response.json();
         console.log(responseData)
-      }
-      if (data.function_name === "adjustBrightness") {
-        const functionArgs = JSON.parse(data.function_args);
-        console.log("adjustBrightness");
-        console.log(functionArgs);
-        const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
-        console.log(selectedClip)
-        const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
-        console.log(videoUrl)
-        if (videoUrl) {
-          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
-          // Update the clip to point to the new media
-          setTimelineTracks(prev => prev.map(track => 
-            track.map(clip => 
-              clip.id === functionArgs.clipId 
-                ? {...clip, mediaId: newMediaId}
-                : clip
-            )
-          ));
-        }
       }
 
       if (responseData.type == 'message') {
@@ -650,15 +647,17 @@ export default function Home() {
       {/* Main editor area */}
       <div className="flex-1 flex min-w-0">
         {/* Media list */}
-        <MediaList
-          mediaList={mediaList}
-          onMediaDragStart={handleMediaDragStart}
-          ffmpegLoading={ffmpegLoading}
-          ffmpegLoaded={ffmpegLoaded}
-          setLoading={setLoading}
-          setMediaList={setMediaList}
-          ffmpeg={ffmpeg}
-        />
+        <div className="w-1/4 h-full overflow-y-auto bg-[#161B22] border-r border-[#30363D]">
+          <MediaList
+            mediaList={mediaList}
+            onMediaDragStart={handleMediaDragStart}
+            ffmpegLoading={ffmpegLoading}
+            ffmpegLoaded={ffmpegLoaded}
+            setLoading={setLoading}
+            setMediaList={setMediaList}
+            ffmpeg={ffmpeg}
+          />
+        </div>
 
         {/* Preview and Chat area */}
         <div className="flex-1 flex min-w-0">

@@ -35,8 +35,6 @@ AVAILABLE_TASK_FUNCTIONS = {
         }
     }
 }
-
-# Define the available functions for OpenAI
 AVAILABLE_FUNCTIONS = {
     "trim_video": {
         "name": "trim_video",
@@ -73,6 +71,24 @@ AVAILABLE_FUNCTIONS = {
             },
             "required": ["clipId", "cutPoint"]
         }
+    }, 
+    "adjustBrightness": {
+        "name": "adjustBrightness", 
+        "description": "Adjust the brightness level of a video. Evaluate the frames and think about what the best brightness level is for each part of the video. Give me the exact brightness level for the entire video needed.Range between 0 and 1 as a decimal.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to adjust brightness for"
+                },
+                "brightness": {
+                    "type": "number",
+                    "description": "Brightness adjustment value (negative darkens, positive brightens)"
+                }
+            },
+            "required": ["clipId", "brightness"]
+        }
     },
     "moveClip": {
         "name": "moveClip",
@@ -91,20 +107,5 @@ AVAILABLE_FUNCTIONS = {
             },
             "required": ["clipId", "start"]
         }
-    },
-    "deleteClip": {
-        "name": "deleteClip",
-        "description": "Deletes a clip from the timeline given it's clip ID.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "clipId": {
-                    "type": "string",
-                    "description": "ID of the clip to delete"
-                },
-            }
-        },
-        "required": ["clipId"]
     }
 }
-
