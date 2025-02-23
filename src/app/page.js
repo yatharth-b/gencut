@@ -633,7 +633,7 @@ export default function Home() {
             setTimelineTracks((prev) =>
               prev.map((track) =>
                 track.map((clip) =>
-                  clip.clip_id === functionArgs.clipId
+                  clip.clip_id === selectedClip.clip_id
                     ? { ...clip, mediaId: newMediaId }
                     : clip
                 )
@@ -660,7 +660,7 @@ export default function Home() {
             setTimelineTracks((prev) =>
               prev.map((track) =>
                 track.map((clip) =>
-                  clip.clip_id === functionArgs.clipId
+                  clip.clip_id === selectedClip.clip_id
                     ? { ...clip, mediaId: newMediaId }
                     : clip
                 )
@@ -685,7 +685,7 @@ export default function Home() {
             setTimelineTracks((prev) =>
               prev.map((track) =>
                 track.map((clip) =>
-                  clip.clip_id === functionArgs.clipId
+                  clip.clip_id === selectedClip.clip_id
                     ? { ...clip, mediaId: newMediaId }
                     : clip
                 )
@@ -710,7 +710,7 @@ export default function Home() {
             setTimelineTracks((prev) =>
               prev.map((track) =>
                 track.map((clip) =>
-                  clip.clip_id === functionArgs.clipId
+                  clip.clip_id === selectedClip.clip_id
                     ? { ...clip, mediaId: newMediaId }
                     : clip
                 )
@@ -732,11 +732,16 @@ export default function Home() {
               selectedMedia.file,
               setMediaList
             );
+
+            console.log('in grayscale')
+            console.log(mediaId)
+            console.log(selectedClip)
+            console.log(timelineTracks)
             // Update the clip to point to the new media
             setTimelineTracks((prev) =>
               prev.map((track) =>
                 track.map((clip) =>
-                  clip.clip_id === functionArgs.clipId
+                  clip.clip_id === selectedClip.clip_id
                     ? { ...clip, mediaId: newMediaId }
                     : clip
                 )
@@ -766,7 +771,7 @@ export default function Home() {
           setTimelineTracks((prev) =>
             prev.map((track) =>
               track.map((clip) =>
-                clip.clip_id === functionArgs.clipId
+                clip.clip_id === selectedClip.clip_id
                   ? { ...clip, mediaId: newMediaId }
                   : clip
               )
@@ -790,7 +795,7 @@ export default function Home() {
             setTimelineTracks((prev) =>
               prev.map((track) =>
                 track.map((clip) =>
-                  clip.clip_id === functionArgs.clipId
+                  clip.clip_id === selectedClip.clip_id
                     ? { ...clip, mediaId: newMediaId }
                     : clip
                 )
@@ -815,7 +820,7 @@ export default function Home() {
             setTimelineTracks((prev) =>
               prev.map((track) =>
                 track.map((clip) =>
-                  clip.clip_id === functionArgs.clipId
+                  clip.clip_id === selectedClip.clip_id
                     ? { ...clip, mediaId: newMediaId }
                     : clip
                 )
