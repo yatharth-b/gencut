@@ -335,7 +335,7 @@ def continue_task(task_id, clip_contexts):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=formatted_messages,
-        functions=[AVAILABLE_FUNCTIONS['cutClip'], AVAILABLE_FUNCTIONS['moveClip'], AVAILABLE_FUNCTIONS['adjustBrightness']],
+        functions=[AVAILABLE_FUNCTIONS['cutClip'], AVAILABLE_FUNCTIONS['moveClip'], AVAILABLE_FUNCTIONS['adjustBrightness'], AVAILABLE_FUNCTIONS['trim_video'], AVAILABLE_FUNCTIONS['deleteClip']],
         function_call="auto",
     )
     assistant_message = response.choices[0].message

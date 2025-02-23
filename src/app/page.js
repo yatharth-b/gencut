@@ -142,6 +142,12 @@ export default function Home() {
     setSelectedClipInfo(null); // Clear the selected clip info
   };
 
+  const deleteClip = (clip_id) => {
+    setTimelineTracks((prev) =>
+      [prev[0].filter((c) => c.id !== clip_id)]
+    );
+  }
+
   const handleMediaDragStart = (media) => {
     setDraggingMedia(media);
   };
@@ -400,16 +406,16 @@ export default function Home() {
 
     // Update the single track directly
     setTimelineTracks((prev) => {
-      const updatedTrack = prev[0].flatMap((c) => {
-        if (c.id === clipToCut.id) {
-          // Replace the cut clip with the two new pieces
-          return [firstHalf, secondHalf];
+      const updatedTrack = prev[0].map((c) => {
+        if (c.id === clipToMove.id) {
+          return newClip;
         }
         return c;
       });
-      return [updatedTrack];
+
+      return [updatedTrack]; // Return a new array with the updated track
     });
-  };
+  }
 
   const handleClipClick = (e, trackIndex, clipIndex, clip) => {
     e.stopPropagation(); // Prevent timeline click
@@ -463,7 +469,7 @@ export default function Home() {
 
         if (responseData.function_name === "deleteClip") {
           const functionArgs = JSON.parse(responseData.function_args);
-          moveClip(functionArgs.clipId);
+          deleteClip(functionArgs.clipId);
         }
 
         if (responseData.function_name === "adjustBrightness") {
@@ -482,6 +488,25 @@ export default function Home() {
               )
             ));
           }
+        }
+
+        if (responseData.function_name === "trim_video") {
+          const functionArgs = JSON.parse(responseData.function_args);
+          const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+          if (!selectedMedia) {
+            console.error('Media not found for clip');
+            return;
+          }
+          const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
+          // Update the clip to point to the new media
+          setTimelineTracks(prev => prev.map(track => 
+            track.map(clip => 
+              clip.id === functionArgs.clipId 
+                ? {...clip, mediaId: newMediaId}
+                : clip
+            )
+          ));
         }
 
         clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
@@ -518,31 +543,6 @@ export default function Home() {
             content: responseData.message,
           },
         ]);
-
-      else if (data.function_name === "trim_video") {
-        const functionArgs = JSON.parse(data.function_args);
-        const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
-        const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-        if (!selectedMedia) {
-          console.error('Media not found for clip');
-          return;
-        }
-        const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
-        // Update the clip to point to the new media
-        setTimelineTracks(prev => prev.map(track => 
-          track.map(clip => 
-            clip.id === functionArgs.clipId 
-              ? {...clip, mediaId: newMediaId}
-              : clip
-          )
-        ));
-      }
-      // If it's a function call to rearrange the clips
-      if (data.function_name === "moveClip") {
-        const functionArgs = JSON.parse(data.function_args);
-        console.log(functionArgs)
-        moveClip(functionArgs.clipId, functionArgs.start);
-
       }
 
       setIsChatLoading(false);
@@ -662,7 +662,7 @@ export default function Home() {
       {/* Main editor area */}
       <div className="flex-1 flex min-w-0">
         {/* Media list */}
-        <div className="w-1/4 h-full overflow-y-auto bg-[#161B22] border-r border-[#30363D]">
+        <div className="h-full overflow-y-auto overflow-x-hidden bg-[#161B22] border-r border-[#30363D]">
           <MediaList
             mediaList={mediaList}
             onMediaDragStart={handleMediaDragStart}
