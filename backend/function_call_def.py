@@ -52,7 +52,7 @@ AVAILABLE_FUNCTIONS = {
     },
     "trim_video": {
         "name": "trim_video",
-        "description": "Trim a video between specified start and end times",
+        "description": "Trim a video between specified start and end times . Interpret each frame as a second, and give the start time and end time in seconds. Make sure the end time is less than the duration of the video.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -63,9 +63,13 @@ AVAILABLE_FUNCTIONS = {
                 "end_time": {
                     "type": "number",
                     "description": "End time in seconds"
+                },
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to trim"
                 }
             },
-            "required": ["start_time", "end_time"]
+            "required": ["start_time", "end_time", "clipId"]
         }
     },
     "cutClip": {
