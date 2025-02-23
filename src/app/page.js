@@ -6,6 +6,8 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
+import { adjustBrightness } from "./utils";
+
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
 
@@ -88,8 +90,7 @@ export default function Home() {
       // Calculate drop position
       const timelineRect = timelineRef.current.getBoundingClientRect();
       const dropPosition =
-        ((e.clientX - timelineRect.left) / timelineRect.width) *
-        projectDuration;
+        ((e.clientX - timelineRect.left) / timelineRect.width) * projectDuration;
 
       // Get media and create new clip
       const media = mediaList.find((m) => m.id === draggingMedia.id);
@@ -290,10 +291,40 @@ export default function Home() {
     setDraggingClip(null);
   };
 
-  const cutClip = (clipId, cutPoint) => {
-    clipId = clipId.toString();
+  const createMediaCopy = async (originalMediaId) => {
+    // Find the original media from mediaList
+    const originalMedia = mediaList.find(m => m.id === originalMediaId);
+    if (!originalMedia) {
+        console.error("Original media not found");
+        return null;
+    }
 
-    const clipToCut = timelineTracks[0].find((c) => c.id === clipId);
+    // Create a deep copy of the original media file and blob
+    const originalBlob = originalMedia.file;
+    const copiedBlob = new Blob([originalBlob], { type: originalBlob.type });
+    const copiedFile = new File([copiedBlob], `${originalMedia.name}_copy.mp4`, { type: originalBlob.type });
+    const copiedUrl = URL.createObjectURL(copiedBlob);
+
+    // Create a deep copy of the media object
+    const newMedia = {
+        id: `media-${Date.now()}`,
+        file: copiedFile,
+        url: copiedUrl,
+        name: `${originalMedia.name} (Copy)`,
+        duration: originalMedia.duration,
+        thumbnails: originalMedia.thumbnails.map(thumb => ({...thumb})), // Deep copy thumbnails
+        loading: false,
+        type: originalMedia.type
+    };
+
+    // Add new media to mediaList
+    setMediaList(prev => [...prev, newMedia]);
+    return newMedia.id;
+  };
+
+  const cutClip = async (clipId, cutPoint) => {
+    console.log(timelineTracks)
+    const clipToCut = timelineTracks[0].find(c => c.id === clipId);
     if (!clipToCut) {
       console.error("Clip not found with ID:", clipId);
       return;
@@ -313,8 +344,7 @@ export default function Home() {
       imageAttributes: clipToCut.imageAttributes.slice(0, Math.ceil(cutPoint)),
       transcription: clipToCut.transcription.slice(0, Math.ceil(cutPoint)),
     };
-
-    // Calculate the second half
+    
     const secondHalf = {
       id: (Date.now() + 1).toString(),
       mediaId: clipToCut.mediaId,
@@ -326,6 +356,47 @@ export default function Home() {
       imageAttributes: clipToCut.imageAttributes.slice(Math.ceil(cutPoint)),
       transcription: clipToCut.transcription.slice(Math.ceil(cutPoint)),
     };
+
+    // Create copy and update secondHalf
+    const newMediaId = await createMediaCopy(clipToCut.mediaId);
+    if (newMediaId) {
+        secondHalf.mediaId = newMediaId;
+    }
+
+
+
+    // Update the single track directly
+    setTimelineTracks((prev) => {
+        const updatedTrack = prev[0].map((c) => {
+            if (c.id === clipToCut.id) {
+                // Replace the cut clip with the two new pieces
+                return [firstHalf, secondHalf];
+            }
+            return [c];
+        }).flat();
+
+        return [updatedTrack]; // Return a new array with the updated track
+    });
+  };
+
+  const moveClip = (clipId, newStart) => {
+    console.log("Move clip", clipId, newStart);
+    const clipToMove = timelineTracks[0].find(c => c.id === clipId);
+    if (!clipToMove) {
+        console.error("Clip not found with ID:", clipId);
+        return;
+    }
+
+    const newClip = {
+      id: clipToMove.id,
+      mediaId: clipToMove.mediaId,
+      start: newStart,
+      duration: clipToMove.duration,
+      offset: clipToMove.offset
+    }
+
+    console.log("moveClip", clipToMove, newStart);
+    clipToMove.start = newStart;
 
     // Update the single track directly
     setTimelineTracks((prev) => {
@@ -430,6 +501,27 @@ export default function Home() {
         responseData = await response.json();
         console.log(responseData)
       }
+      if (data.function_name === "adjustBrightness") {
+        const functionArgs = JSON.parse(data.function_args);
+        console.log("adjustBrightness");
+        console.log(functionArgs);
+        const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+        console.log(selectedClip)
+        const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
+        console.log(videoUrl)
+        if (videoUrl) {
+          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+          const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
+          // Update the clip to point to the new media
+          setTimelineTracks(prev => prev.map(track => 
+            track.map(clip => 
+              clip.id === functionArgs.clipId 
+                ? {...clip, mediaId: newMediaId}
+                : clip
+            )
+          ));
+        }
+      }
 
       if (responseData.type == 'message') {
         setMessages((prev) => [
@@ -442,12 +534,14 @@ export default function Home() {
       }
 
       setIsChatLoading(false);
+
     } catch (error) {
       console.error("Error sending message:", error);
       setMessages((prev) => [
         ...prev,
         {
-          role: "assistant",
+          role: "assistant", 
+          role: "assistant", 
           content: "Sorry, I encountered an error processing your request.",
           type: "error",
         },

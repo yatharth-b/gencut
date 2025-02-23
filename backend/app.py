@@ -47,6 +47,82 @@ def trim_video(start_time: float, end_time: float) -> dict:
         }
     }
 
+# Define the available functions for OpenAI
+AVAILABLE_FUNCTIONS = {
+    "trim_video": {
+        "name": "trim_video",
+        "description": "Trim a video between specified start and end times",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_time": {
+                    "type": "number",
+                    "description": "Start time in seconds"
+                },
+                "end_time": {
+                    "type": "number",
+                    "description": "End time in seconds"
+                }
+            },
+            "required": ["start_time", "end_time"]
+        }
+    },
+    "cutClip": {
+        "name": "cutClip",
+        "description": "Cut a video clip at a specified point",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to cut"
+                },
+                "cutPoint": {
+                    "type": "number",
+                    "description": "Time in seconds where the clip will be cut"
+                }
+            },
+            "required": ["clipId", "cutPoint"]
+        }
+    }, 
+    "adjustBrightness": {
+        "name": "adjustBrightness", 
+        "description": "Adjust the brightness level of a video. Evaluate the frames and think about what the best brightness level is for each part of the video. Give me the exact brightness level for the entire video needed.Range between 0 and 1 as a decimal.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to adjust brightness for"
+                },
+                "brightness": {
+                    "type": "number",
+                    "description": "Brightness adjustment value (negative darkens, positive brightens)"
+                }
+            },
+            "required": ["clipId", "brightness"]
+        }
+    },
+    "moveClip": {
+        "name": "moveClip",
+        "description": "Moves a video clip to start from a specified location.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to move"
+                },
+                "start": {
+                    "type": "number",
+                    "description": "Time in seconds where the clip will now start from"
+                }
+            },
+            "required": ["clipId", "start"]
+        }
+    }
+}
+
 # Add conversation history storage
 conversation_history = []
 
@@ -72,7 +148,7 @@ def gpt_frame_desc(base64_image):
     ]
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=messages,
         max_tokens=500
     )

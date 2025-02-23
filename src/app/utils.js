@@ -1,101 +1,143 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
+import { toBlobURL } from '@ffmpeg/util';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB limit
 
+// Create FFmpeg instance
+const ffmpeg = createFFmpeg({
+    log: true,
+    corePath: "https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js",
+});
+
+// Load FFmpeg
 const loadFFmpeg = async () => {
-    const ffmpegInstance = new FFmpeg();
-    try {
-        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd';
-        await ffmpegInstance.load({
-            coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-            wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-        });
-        console.log('FFmpeg is ready!');
-        return ffmpegInstance;
-    } catch (error) {
-        console.error('Failed to load FFmpeg:', error);
-        return null;
+    if (!ffmpeg.isLoaded()) {
+        try {
+            // Set up logger before loading
+            // ffmpeg.setLogger(({ type, message }) => {
+            //     console.log(`FFmpeg [${type}]: ${message}`);
+            // });
+            
+            await ffmpeg.load();
+            console.log('FFmpeg is ready!');
+        } catch (error) {
+            console.error('Failed to load FFmpeg:', error);
+            throw error;
+        }
     }
+    return ffmpeg;
 };
 
-const writeInputFile = async (ffmpeg, input) => {
-    let fileData;
+const writeInputFile = async (input) => {
     try {
-        if (typeof input === 'string') {
-            const response = await fetch(input);
-            const contentLength = response.headers.get('content-length');
-            
-            if (contentLength && parseInt(contentLength) > MAX_FILE_SIZE) {
-                throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
-            }
-            
-            fileData = new Uint8Array(await response.arrayBuffer());
-        } else {
-            if (input.byteLength > MAX_FILE_SIZE) {
-                throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
-            }
-            fileData = new Uint8Array(input);
+        const data = await fetchFile(input);
+        if (data.length > MAX_FILE_SIZE) {
+            throw new Error(`File size exceeds limit of ${MAX_FILE_SIZE / 1024 / 1024}MB`);
         }
-        
-        await ffmpeg.writeFile('input.mp4', fileData);
-        const writtenFile = await ffmpeg.readFile('input.mp4');
-        console.log('File written to FS:', writtenFile.length, 'bytes');
+        ffmpeg.FS('writeFile', 'input.mp4', data);
+        console.log('File written successfully');
     } catch (error) {
         console.error('Error writing input file:', error);
         throw error;
     }
 };
-
-const getOutputFile = async (ffmpeg, type = 'video/mp4') => {
+const getOutputFile = async (ffmpeg, outputFileName) => {
     try {
-        const data = await ffmpeg.readFile('output.mp4');
-        await ffmpeg.deleteFile('input.mp4');
-        await ffmpeg.deleteFile('output.mp4');
-        
-        const blob = new Blob([data.buffer], { type });
-        const url = URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = 'processed_video.mp4';
-        document.body.appendChild(link);
-        link.click();
-        
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        
-        return url;
+        // List files in FS to debug
+        const files = ffmpeg.FS('readdir', '/');
+        console.log('Files in FFmpeg filesystem:', files);
+
+        // Check if output file exists
+        if (!files.includes(outputFileName)) {
+            throw new Error(`Output file ${outputFileName} not found`);
+        }
+
+        const data = ffmpeg.FS('readFile', outputFileName);
+        return data;
     } catch (error) {
-        console.error('Error getting output file:', error);
-        throw error;
+        console.error('Error in getOutputFile:', error);
+        throw new Error(`Error getting output file: ${error.message}`);
     }
 };
 
-const processVideo = async (input, ffmpegCommands, type = 'video/mp4') => {
-    const ffmpeg = await loadFFmpeg();
-    if (!ffmpeg) throw new Error('Failed to load FFmpeg');
-    
+const processVideo = async (input, ffmpegCommands, outputFileName) => {
     try {
-        await writeInputFile(ffmpeg, input);
-        await ffmpeg.exec(ffmpegCommands);
-        return await getOutputFile(ffmpeg, type);
+        await loadFFmpeg();
+        await writeInputFile(input);
+
+        console.log('Running FFmpeg command:', ...ffmpegCommands);
+        await ffmpeg.run(...ffmpegCommands);
+        // List files in FS to debug
+        const filesAfterProcessing = ffmpeg.FS('readdir', '/');
+        console.log('Files in FFmpeg filesystem after processing:', filesAfterProcessing);
+
+        const outputFile = await getOutputFile(ffmpeg, outputFileName);
+
+        try {
+            ffmpeg.FS('unlink', 'input.mp4');
+            ffmpeg.FS('unlink', outputFileName);
+        } catch (e) {
+            console.log('Cleanup error:', e);
+        }
+        
+        return outputFile;
     } catch (error) {
         console.error('Error processing video:', error);
         throw error;
     }
 };
 
-export const adjustBrightness = async (input, start = null, end = null, brightness) => {
-    return processVideo(input, [
-        '-i', 'input.mp4',
-        '-vf', `eq=brightness=${brightness}`,
-        '-c:v', 'libx264', '-c:a', 'aac',
-        'output.mp4'
-    ]);
+export const adjustBrightness = async (input, brightness, setMediaList) => {
+    // Convert brightness to decimal if it's a whole number
+    brightness = brightness > 1 ? brightness / 100 : brightness;
+    console.log('Adjusting brightness:', brightness);
+    try {
+        const outputFileName = 'output.mp4';
+        const data = await processVideo(input, [
+            '-i', 'input.mp4',
+            '-vf', `eq=brightness=${brightness}`,
+            '-c:v', 'libx264',
+            outputFileName
+        ], outputFileName);
+
+        // Create a blob from the Uint8Array data
+        const outputBlob = new Blob([data.buffer], { type: 'video/mp4' });
+        const outputFile = new File([outputBlob], 'brightness_adjusted.mp4', { type: 'video/mp4' });
+        const outputUrl = URL.createObjectURL(outputBlob);
+
+        // Create video element to get duration
+        const video = document.createElement('video');
+        video.src = outputUrl;
+        
+        // Wait for metadata to load to get duration
+        await new Promise((resolve) => {
+            video.onloadedmetadata = () => resolve();
+            video.onerror = () => resolve();
+        });
+
+        // Create new media entry
+        const newMedia = {
+            id: `media-${Date.now()}`,
+            file: outputFile,
+            url: outputUrl,
+            name: `Brightness Adjusted (${brightness})`,
+            duration: video.duration,
+            thumbnails: [], // Thumbnails will be generated by MediaList component
+            loading: false,
+            type: 'video/mp4'
+        };
+
+        // Add to media list
+        setMediaList(prev => [...prev, newMedia]);
+        
+        return newMedia.id;
+    } catch (error) {
+        console.error('Error adjusting brightness:', error);
+        throw error;
+    }
 };
 
-export const changeAspectRatio = async (input, start = null, end = null, width, height) => {
+export const changeAspectRatio = async (input, width, height) => {
     return processVideo(input, [
         '-i', 'input.mp4',
         '-vf', `scale=${width}:${height},setsar=1:1`,
@@ -104,33 +146,33 @@ export const changeAspectRatio = async (input, start = null, end = null, width, 
     ]);
 };
 
-export const applyColorGrading = async (input, start = null, end = null, contrast, gamma, saturation) => {
+export const applyColorGrading = async (input, contrast, gamma, saturation) => {
     return processVideo(input, [
         '-i', 'input.mp4',
         '-vf', `eq=contrast=${contrast}:gamma=${gamma}:saturation=${saturation}`,
-        '-c:v', 'libx264', '-c:a', 'aac',
+        '-c:v', 'libx264',
         'output.mp4'
     ]);
 };
 
-export const adjustSaturation = async (input, start = null, end = null, saturation) => {
-    return applyColorGrading(input, null, null, 1.0, 1.0, saturation);
+export const adjustSaturation = async (input, saturation) => {
+    return applyColorGrading(input, 1.0, 1.0, saturation);
 };
 
-export const addBlurEffect = async (input, start = null, end = null, blurStrength) => {
+export const addBlurEffect = async (input, blurStrength) => {
     return processVideo(input, [
         '-i', 'input.mp4',
         '-vf', `gblur=sigma=${blurStrength}`,
-        '-c:v', 'libx264', '-c:a', 'aac',
+        '-c:v', 'libx264',
         'output.mp4'
     ]);
 };
 
-export const convertToGrayscale = async (input, start = null, end = null) => {
+export const convertToGrayscale = async (input) => {
     return processVideo(input, [
         '-i', 'input.mp4',
         '-vf', 'hue=s=0',
-        '-c:v', 'libx264', '-c:a', 'aac',
+        '-c:v', 'libx264',
         'output.mp4'
     ]);
 };
