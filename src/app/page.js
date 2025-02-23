@@ -6,7 +6,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
-import { addBlurEffect, adjustBrightness, adjustSaturation, applyColorGrading, convertToGrayscale, trimVideo } from "./utils";
+import { addBlurEffect, adjustBrightness, adjustSaturation, applyColorGrading, applyFadeIn, applyFadeOut, convertToGrayscale, trimVideo } from "./utils";
 
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
@@ -681,6 +681,70 @@ export default function Home() {
             }
         }
 
+            if (responseData.function_name === "trim_video") {
+                const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                if (!selectedMedia) {
+                    console.error('Media not found for clip');
+                    return;
+                }
+                const newMediaId = await trimVideo(selectedMedia.file, functionArgs.start_time, functionArgs.end_time, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                        clip.id === functionArgs.clipId 
+                            ? {...clip, mediaId: newMediaId}
+                            : clip
+                    )
+                ));
+            }
+
+            if (responseData.function_name === "appleFadeIn") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                const newMediaId = await applyFadeIn(selectedMedia.file, functionArgs.duration, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId 
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+                }
+            }
+
+            if (responseData.function_name === "applyFadeOut") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                const newMediaId = await applyFadeOut(selectedMedia.file, functionArgs.duration, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId 
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+                }
+            }
+
+            clipContexts = clipsInRange.map((clip) => JSON.stringify(clip));
+
+            response = await fetch("http://localhost:5050/api/chatv2", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    messages: messagesToSend,
+                    clipContexts: clipContexts,
+                    type: "continue_task",
+                    task_id: task_id,
+                }),
+            });
         if (responseData.function_name === "trim_video") {
           const selectedClip = timelineTracks[0].find(
             (clip) => clip.clip_id === functionArgs.clipId

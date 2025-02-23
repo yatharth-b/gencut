@@ -382,6 +382,9 @@ def continue_task(task_id, clip_contexts):
                        AVAILABLE_FUNCTIONS['applyColorGrading'],
                        AVAILABLE_FUNCTIONS['adjustSaturation'],
                        AVAILABLE_FUNCTIONS['addBlurEffect'],
+                       AVAILABLE_FUNCTIONS['applyFadeIn'],
+                       AVAILABLE_FUNCTIONS['applyFadeOut']
+
                        ],
         function_call="auto",
     )
