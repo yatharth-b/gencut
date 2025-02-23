@@ -8,6 +8,8 @@ import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
 import { adjustBrightness } from "./utils";
 
+import { adjustBrightness } from "./utils";
+
 
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
@@ -318,10 +320,39 @@ export default function Home() {
     return newMedia.id;
 };
   const cutClip = async (clipId, cutPoint) => {
+  const createMediaCopy = async (originalMediaId) => {
+    // Find the original media from mediaList
+    const originalMedia = mediaList.find(m => m.id === originalMediaId);
+    if (!originalMedia) {
+        console.error("Original media not found");
+        return null;
+    }
+
+    // Create a deep copy of the original media file and blob
+    const originalBlob = originalMedia.file;
+    const copiedBlob = new Blob([originalBlob], { type: originalBlob.type });
+    const copiedFile = new File([copiedBlob], `${originalMedia.name}_copy.mp4`, { type: originalBlob.type });
+    const copiedUrl = URL.createObjectURL(copiedBlob);
+
+    // Create a deep copy of the media object
+    const newMedia = {
+        id: `media-${Date.now()}`,
+        file: copiedFile,
+        url: copiedUrl,
+        name: `${originalMedia.name} (Copy)`,
+        duration: originalMedia.duration,
+        thumbnails: originalMedia.thumbnails.map(thumb => ({...thumb})), // Deep copy thumbnails
+        loading: false,
+        type: originalMedia.type
+    };
+
+    // Add new media to mediaList
+    setMediaList(prev => [...prev, newMedia]);
+    return newMedia.id;
+};
+  const cutClip = async (clipId, cutPoint) => {
     console.log(timelineTracks)
     const clipToCut = timelineTracks[0].find(c => c.id === clipId);
-    console.log('cliptocut')
-    console.log(clipToCut)
     if (!clipToCut) {
         console.error("Clip not found with ID:", clipId);
         return;
@@ -340,7 +371,7 @@ export default function Home() {
         imageAttributes: clipToCut.imageAttributes.slice(0, Math.ceil(cutPoint)),
         transcription: clipToCut.transcription.slice(0, Math.ceil(cutPoint)),
     };
-
+    
     const secondHalf = {
         id: (Date.now() + 1).toString(),
         mediaId: clipToCut.mediaId,
@@ -352,6 +383,16 @@ export default function Home() {
         imageAttributes: clipToCut.imageAttributes.slice(Math.ceil(cutPoint)),
         transcription: clipToCut.transcription.slice(Math.ceil(cutPoint)),
     };
+
+    // Create copy and update secondHalf
+    const newMediaId = await createMediaCopy(clipToCut.mediaId);
+    if (newMediaId) {
+        secondHalf.mediaId = newMediaId;
+    }
+
+
+
+
 
     // Create copy and update secondHalf
     const newMediaId = await createMediaCopy(clipToCut.mediaId);
