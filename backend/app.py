@@ -78,6 +78,24 @@ AVAILABLE_FUNCTIONS = {
             },
             "required": ["clipId", "cutPoint"]
         }
+    }, 
+    "adjustBrightness": {
+        "name": "adjustBrightness", 
+        "description": "Adjust the brightness level of a video. Evaluate the frames and think about what the best brightness level is for each part of the video. Give me the exact brightness level for the entire video needed.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to adjust brightness for"
+                },
+                "brightness": {
+                    "type": "number",
+                    "description": "Brightness adjustment value (negative darkens, positive brightens)"
+                }
+            },
+            "required": ["clipId", "brightness"]
+        }
     },
     "moveClip": {
         "name": "moveClip",
@@ -124,7 +142,7 @@ def gpt_frame_desc(base64_image):
     ]
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=messages,
         max_tokens=500
     )
@@ -246,10 +264,10 @@ def chat():
         print("in chat")
         data = request.get_json()
         messages = data.get('messages', [])
-        print(messages)
+        # print(messages)
         clip_contexts = data.get('clipContexts', [])
 
-        print(clip_contexts)
+        # print(clip_contexts)
         
         formatted_messages = []
         for msg in messages:
@@ -266,7 +284,7 @@ def chat():
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=formatted_messages,
-            functions=[AVAILABLE_FUNCTIONS["trim_video"], AVAILABLE_FUNCTIONS['cutClip'], AVAILABLE_FUNCTIONS['moveClip']],
+            functions=[AVAILABLE_FUNCTIONS["trim_video"], AVAILABLE_FUNCTIONS['cutClip'], AVAILABLE_FUNCTIONS['adjustBrightness'], AVAILABLE_FUNCTIONS['moveClip']],
             function_call="auto",
             max_tokens=500
         )

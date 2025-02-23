@@ -6,6 +6,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import MediaList from "@/components/MediaList";
 import VideoPlayer from "@/components/VideoPlayer";
+import { adjustBrightness } from "./utils";
 
 const inter = Inter({ subsets: ["latin"] });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] });
@@ -85,7 +86,7 @@ export default function Home() {
     if (draggingMedia) {
       // Calculate drop position
       const timelineRect = timelineRef.current.getBoundingClientRect();
-      const dropPosition =
+  const dropPosition =
         ((e.clientX - timelineRect.left) / timelineRect.width) *
         projectDuration;
 
@@ -435,6 +436,34 @@ export default function Home() {
         const functionArgs = JSON.parse(data.function_args);
         console.log(functionArgs)
         cutClip(functionArgs.clipId, functionArgs.cutPoint);
+      }
+      if (data.function_name === "adjustBrightness") {
+        const functionArgs = JSON.parse(data.function_args);
+        console.log("adjustBrightness");
+        console.log(functionArgs);
+        const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
+        console.log(selectedClip)
+        const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
+        console.log(videoUrl)
+        if (videoUrl) {
+          fetch(videoUrl)
+            .then(response => response.blob())
+            .then(async blob => {
+              const newMediaId = await adjustBrightness({
+                ...blob, 
+                clipId: functionArgs.clipId
+              }, functionArgs.brightness, setMediaList);
+              
+              // Update the clip to point to the new media
+              setTimelineTracks(prev => prev.map(track => 
+                track.map(clip => 
+                  clip.id === functionArgs.clipId 
+                    ? {...clip, mediaId: newMediaId}
+                    : clip
+                )
+              ));
+            });
+        }
       }
 
       // If it's a function call to rearrange the clips
