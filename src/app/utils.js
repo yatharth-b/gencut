@@ -216,6 +216,35 @@ export const convertToGrayscale = async (input, setMediaList) => {
         setMediaList
     );
 };
+
+export const applyFadeIn = async (input, duration, setMediaList) => {
+    return processVideoMediaList(
+        input,
+        `Fade In (${duration}s)`,
+        [
+            '-i', 'input.mp4',
+            '-vf', `fade=t=in:st=0:d=${duration}`,
+            '-c:v', 'libx264',
+            'output.mp4'
+        ],
+        setMediaList
+    );
+};
+
+export const applyFadeOut = async (input, duration, setMediaList) => {
+    return processVideoMediaList(
+        input,
+        `Fade Out (${duration}s)`,
+        [
+            '-i', 'input.mp4',
+            '-vf', `fade=t=out:st=3:d=${duration}`, // Change `st=3` to match the actual video duration - fade-out duration
+            '-c:v', 'libx264',
+            'output.mp4'
+        ],
+        setMediaList
+    );
+};
+
 export const trimVideo = async (input, startTime, endTime, setMediaList) => {
     console.log('Trimming video:', startTime, 'to', endTime);
     try {
