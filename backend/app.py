@@ -143,7 +143,6 @@ def gpt_frame_desc(base64_image):
 
     response = client.chat.completions.create(
         model="gpt-4o",
-        model="gpt-4o",
         messages=messages,
         max_tokens=500
     )
