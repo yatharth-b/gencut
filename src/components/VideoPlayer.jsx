@@ -178,13 +178,16 @@ export default function VideoPlayer({
 
   const handleCutClip = () => {
     if (!selectedClipInfo) return;
-
+    console.log('handlecutclip')
     const { clip } = selectedClipInfo; // No need for trackIndex since there's only one track
-    const cutPoint = currentTime;
+    console.log(clip)
+        // Only cut if the point is within the clip
+    // if (currentTime <= clip.start || currentTime >= clip.start + clip.duration)
+    //     return;
 
-    // Only cut if the point is within the clip
-    if (cutPoint <= clip.start || cutPoint >= clip.start + clip.duration)
-      return;
+    const cutPoint = currentTime - clip.start;
+
+
     console.log(clip)
     // Call the cutClip function to get the new clips
     cutClip(clip.id, cutPoint);
@@ -197,12 +200,17 @@ export default function VideoPlayer({
 
     const { clip } = selectedClipInfo;
 
-    setTimelineTracks((prev) =>
-      [prev[0].filter((c) => c.id !== clip.id)] // Filter out the deleted clip
-    );
+    deleteClip(clip.id)
 
     setSelectedClipInfo(null); // Clear the selected clip info
   };
+
+  const deleteClip = (clip_id) => {
+    setTimelineTracks((prev) =>
+      [prev[0].filter((c) => c.id !== clip_id)]
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#0D1117]">
       {/* Video container */}
