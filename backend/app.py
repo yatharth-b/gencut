@@ -62,6 +62,20 @@ def trim_video(start_time: float, end_time: float) -> dict:
 
 # Define the available functions for OpenAI
 AVAILABLE_FUNCTIONS = {
+    'deleteClip': {
+        "name": "deleteClip",
+        "description": "Delete a clip given it's clipId",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "clipId": {
+                    "type": "string",
+                    "description": "ID of the clip to move"
+                }
+            },
+            "required": ["clipId"]
+        }
+    },
     "trim_video": {
         "name": "trim_video",
         "description": "Trim a video between specified start and end times",

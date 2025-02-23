@@ -461,7 +461,7 @@ export default function Home() {
         console.log(selectedClip)
         const videoUrl = mediaList.find(m => m.id === selectedClip?.mediaId)?.url;
         console.log(videoUrl)
-        return {functionArgs, selectedClip, videoUrl};
+        return [functionArgs, selectedClip, videoUrl];
       };
 
         let responseData = await response.json();
