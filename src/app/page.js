@@ -496,96 +496,87 @@ export default function Home() {
             if (responseData.function_name === "deleteClip") {
                 deleteClip(functionArgs.clipId);
             }
-      // Add assistant's response to chat
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: data.message,
-          type: data.type, // 'message' or 'function_call'
-        },
-      ]);
 
-      if (data.function_name === "adjustBrightness") {
-        const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-        if (videoUrl) {
-          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
-          // Update the clip to point to the new media
-          setTimelineTracks(prev => prev.map(track => 
-            track.map(clip => 
-              clip.id === functionArgs.clipId 
-                ? {...clip, mediaId: newMediaId}
-                : clip
-            )
-          ));
-        }
-      }
+            if (responseData.function_name === "adjustBrightness") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                const newMediaId = await adjustBrightness(selectedMedia.file, functionArgs.brightness, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId 
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+                }
+            }
 
-      if (responseData.function_name === "applyColorGrading") {
-        const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-        if (videoUrl) {
-          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          const newMediaId = await applyColorGrading(selectedMedia.file, functionArgs.contrast, functionArgs.gamma, functionArgs.saturation, setMediaList);
-          // Update the clip to point to the new media
-          setTimelineTracks(prev => prev.map(track => 
-            track.map(clip => 
-              clip.id === functionArgs.clipId 
-                ? {...clip, mediaId: newMediaId}
-                : clip
-            )
-          ));
-        }
-      }
+            if (responseData.function_name === "applyColorGrading") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                const newMediaId = await applyColorGrading(selectedMedia.file, functionArgs.contrast, functionArgs.gamma, functionArgs.saturation, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId 
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+                }
+            }
 
-      if (responseData.function_name === "adjustSaturation") {
-        const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-        if (videoUrl) {
-          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          const newMediaId = await adjustSaturation(selectedMedia.file, functionArgs.saturation, setMediaList);
-          // Update the clip to point to the new media
-          setTimelineTracks(prev => prev.map(track => 
-            track.map(clip => 
-              clip.id === functionArgs.clipId 
-                ? {...clip, mediaId: newMediaId}
-                : clip
-            )
-          ));
-        }
-      }
+            if (responseData.function_name === "adjustSaturation") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                const newMediaId = await adjustSaturation(selectedMedia.file, functionArgs.saturation, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId 
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+                }
+            }
 
-      if (responseData.function_name === "addBlurEffect") {
-        const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-        if (videoUrl) {
-          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          const newMediaId = await addBlurEffect(selectedMedia.file, functionArgs.blurStrength, setMediaList);
-          // Update the clip to point to the new media
-          setTimelineTracks(prev => prev.map(track => 
-            track.map(clip => 
-              clip.id === functionArgs.clipId 
-                ? {...clip, mediaId: newMediaId}
-                : clip
-            )
-          ));
-        }
-      }
+            if (responseData.function_name === "addBlurEffect") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                const newMediaId = await addBlurEffect(selectedMedia.file, functionArgs.blurStrength, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId 
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+                }
+            }
 
-      if (responseData.function_name === "convertToGrayscale") {
-        const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
-        if (videoUrl) {
-          const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
-          console.log("selected media: ", selectedMedia);
-          const newMediaId = await convertToGrayscale(selectedMedia.file, setMediaList);
-          // Update the clip to point to the new media
-          setTimelineTracks(prev => prev.map(track => 
-            track.map(clip => 
-              clip.id === functionArgs.clipId
-                ? {...clip, mediaId: newMediaId}
-                : clip
-            )
-          ));
+            if (responseData.function_name === "convertToGrayscale") {
+                const [functionArgs, selectedClip, videoUrl] = parseModifyJson(responseData);
+                if (videoUrl) {
+                const selectedMedia = mediaList.find(m => m.id === selectedClip?.mediaId);
+                console.log("selected media: ", selectedMedia);
+                const newMediaId = await convertToGrayscale(selectedMedia.file, setMediaList);
+                // Update the clip to point to the new media
+                setTimelineTracks(prev => prev.map(track => 
+                    track.map(clip => 
+                    clip.id === functionArgs.clipId
+                        ? {...clip, mediaId: newMediaId}
+                        : clip
+                    )
+                ));
+            }
         }
-      }
 
             if (responseData.function_name === "trim_video") {
                 const selectedClip = timelineTracks[0].find(clip => clip.id === functionArgs.clipId);
@@ -775,7 +766,6 @@ export default function Home() {
             setCurrentTime={setCurrentTime}
             selectedClipInfo={selectedClipInfo}
             loading={loading}
-            setLoading={setLoading}
             timelineTracks={timelineTracks}
             setTimelineTracks={setTimelineTracks}
             setSelectedClipInfo={setSelectedClipInfo}
